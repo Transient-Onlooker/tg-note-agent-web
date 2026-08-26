@@ -9,7 +9,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { createItem, getItems } from "./api/items";
+import { createItem, deleteItem, getItems } from "./api/items";
 import "./App.css";
 
 type ViewId =
@@ -21,7 +21,14 @@ type ViewId =
   | "purchase"
   | "archive";
 
-type IconName = ViewId | "menu" | "close" | "send" | "refresh" | "relay";
+type IconName =
+  | ViewId
+  | "menu"
+  | "close"
+  | "send"
+  | "refresh"
+  | "relay"
+  | "delete";
 
 interface NavigationItem {
   id: ViewId;
@@ -146,6 +153,12 @@ const iconPaths: Record<IconName, ReactNode> = {
       <path d="M18.25 16a7.5 7.5 0 1 1 .5-7.25L19 12" />
     </>
   ),
+  delete: (
+    <>
+      <path d="M5 7h14M10 11v5M14 11v5" />
+      <path d="m9 7 .75-2.25h4.5L15 7M7 7l.75 13h8.5L17 7" />
+    </>
+  ),
   relay: (
     <>
       <path d="M5 7.5h10.5a3.5 3.5 0 0 1 0 7H9" />
@@ -204,6 +217,13 @@ function App() {
     onSuccess: async () => {
       setDraft("");
       await queryClient.invalidateQueries({ queryKey: ["items"] });
+    },
+  });
+
+  const deleteItemMutation = useMutation({
+    mutationFn: deleteItem,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["items"] });
     },
   });
 
@@ -314,6 +334,12 @@ function App() {
         )}
       </form>
 
+      {deleteItemMutation.isError && (
+        <p className="inline-error delete-error" role="alert">
+          메모를 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.
+        </p>
+      )}
+
       <div className="list-heading">
         <div>
           <h2>Recent notes</h2>
@@ -385,6 +411,15 @@ function App() {
                   </time>
                 </div>
               </div>
+              <button
+                className="note-card__delete"
+                type="button"
+                aria-label="메모 삭제"
+                disabled={deleteItemMutation.isPending}
+                onClick={() => deleteItemMutation.mutate(item.id)}
+              >
+                <Icon name="delete" size={16} />
+              </button>
             </article>
           ))}
       </div>

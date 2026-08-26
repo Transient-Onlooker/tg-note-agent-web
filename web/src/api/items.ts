@@ -50,3 +50,16 @@ export async function createItem(body: string): Promise<void> {
     throw new Error(`Failed to create item: ${response.status}`);
   }
 }
+
+export async function deleteItem(id: string): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/items/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete item: ${response.status}`);
+  }
+}

@@ -162,6 +162,33 @@ app.post("/api/items", async (c) => {
   );
 });
 
+app.delete("/api/items/:id", async (c) => {
+  const now = new Date().toISOString();
+  const result = await c.env.DB
+    .prepare(`
+      UPDATE items
+      SET
+        deleted_at = ?,
+        updated_at = ?,
+        version = version + 1
+      WHERE id = ?
+        AND deleted_at IS NULL
+    `)
+    .bind(now, now, c.req.param("id"))
+    .run();
+
+  if (result.meta.changes !== 1) {
+    return c.json(
+      {
+        error: "not_found",
+      },
+      404,
+    );
+  }
+
+  return c.json({ ok: true });
+});
+
 app.post("/telegram/webhook", async (c) => {
   const secret = c.req.header("X-Telegram-Bot-Api-Secret-Token");
 
