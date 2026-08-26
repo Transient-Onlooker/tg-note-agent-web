@@ -10,6 +10,7 @@ type Bindings = {
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_WEBHOOK_SECRET: string;
   TELEGRAM_ALLOWED_USER_ID: string;
+  WEB_API_TOKEN: string;
 };
 
 type CreateItemRequest = {
@@ -26,9 +27,25 @@ app.use(
       "https://transient-onlooker.github.io",
     ],
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type"],
+  allowHeaders: ["Authorization", "Content-Type"],
   }),
 );
+
+app.use("/api/*", async (c, next) => {
+  const authorization = c.req.header("Authorization");
+
+  if (!authorization?.startsWith("Bearer ")) {
+    return c.json({ error: "unauthorized" }, 401);
+  }
+
+  const token = authorization.slice("Bearer ".length);
+
+  if (!token || token !== c.env.WEB_API_TOKEN) {
+    return c.json({ error: "unauthorized" }, 401);
+  }
+
+  await next();
+});
 
 app.get("/health", (c) => {
   return c.json({

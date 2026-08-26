@@ -10,6 +10,14 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { createItem, deleteItem, getItems } from "./api/items";
+import {
+  AUTH_EXPIRED_EVENT,
+  AuthError,
+  clearAccessKey,
+  getAccessKey,
+  setAccessKey,
+  validateAccessKey,
+} from "./api/auth";
 import "./App.css";
 
 type ViewId =
@@ -28,7 +36,8 @@ type IconName =
   | "send"
   | "refresh"
   | "relay"
-  | "delete";
+  | "delete"
+  | "lock";
 
 interface NavigationItem {
   id: ViewId;
@@ -159,6 +168,12 @@ const iconPaths: Record<IconName, ReactNode> = {
       <path d="m9 7 .75-2.25h4.5L15 7M7 7l.75 13h8.5L17 7" />
     </>
   ),
+  lock: (
+    <>
+      <rect x="5" y="10" width="14" height="10" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+    </>
+  ),
   relay: (
     <>
       <path d="M5 7.5h10.5a3.5 3.5 0 0 1 0 7H9" />
@@ -201,16 +216,184 @@ function formatCreatedAt(value: string) {
   });
 }
 
+type AuthStatus = "checking" | "locked" | "authenticated";
+
+function LockedScreen({
+  isChecking,
+  error,
+  onUnlock,
+}: {
+  isChecking: boolean;
+  error: string | null;
+  onUnlock: (key: string, remember: boolean) => Promise<void>;
+}) {
+  const [key, setKey] = useState("");
+  const [remember, setRemember] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!key || isSubmitting || isChecking) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    await onUnlock(key, remember);
+    setIsSubmitting(false);
+  };
+
+  return (
+    <main className="lock-screen">
+      <form className="lock-card" onSubmit={handleSubmit}>
+        <div className="lock-card__brand">
+          <span className="brand__mark" aria-hidden="true">
+            <span className="material-symbols-outlined">orthopedics</span>
+          </span>
+          <strong>NoteRelay</strong>
+        </div>
+        <div className="lock-card__heading">
+          <span className="lock-card__icon" aria-hidden="true">
+            <Icon name="lock" size={20} />
+          </span>
+          <div>
+            <h1>Locked</h1>
+            <p>Access key를 입력해 workspace를 여세요.</p>
+          </div>
+        </div>
+        <label className="lock-card__label" htmlFor="access-key">
+          Access key
+        </label>
+        <input
+          id="access-key"
+          className="lock-card__input"
+          type="password"
+          value={key}
+          onChange={(event) => setKey(event.target.value)}
+          autoComplete="current-password"
+          autoFocus={!isChecking}
+          disabled={isChecking || isSubmitting}
+        />
+        <label className="lock-card__remember">
+          <input
+            type="checkbox"
+            checked={remember}
+            onChange={(event) => setRemember(event.target.checked)}
+            disabled={isChecking || isSubmitting}
+          />
+          <span>이 기기에서 기억하기</span>
+        </label>
+        {error && (
+          <p className="lock-card__error" role="alert">
+            {error}
+          </p>
+        )}
+        <button
+          className="lock-card__submit"
+          type="submit"
+          disabled={!key || isChecking || isSubmitting}
+        >
+          {isChecking || isSubmitting ? "확인 중..." : "잠금 해제"}
+        </button>
+      </form>
+    </main>
+  );
+}
+
 function App() {
   const [draft, setDraft] = useState("");
   const [activeView, setActiveView] = useState<ViewId>("inbox");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
+  const [lockError, setLockError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const verifyStoredKey = async () => {
+      const key = getAccessKey();
+
+      if (!key) {
+        if (isMounted) {
+          setAuthStatus("locked");
+        }
+        return;
+      }
+
+      try {
+        await validateAccessKey(key);
+        if (isMounted) {
+          setAuthStatus("authenticated");
+        }
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        if (error instanceof AuthError) {
+          clearAccessKey();
+          setLockError("Access key가 올바르지 않습니다.");
+        } else {
+          setLockError("서버에 연결할 수 없습니다.");
+        }
+        setAuthStatus("locked");
+      }
+    };
+
+    const handleAuthExpired = () => {
+      setAuthStatus("locked");
+      setLockError("Access key가 올바르지 않습니다.");
+    };
+
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    void verifyStoredKey();
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    };
+  }, []);
+
+  const unlock = async (key: string, remember: boolean) => {
+    setLockError(null);
+
+    try {
+      await validateAccessKey(key);
+      setAccessKey(key, remember);
+      setAuthStatus("authenticated");
+    } catch (error) {
+      if (error instanceof AuthError) {
+        clearAccessKey();
+        setLockError("Access key가 올바르지 않습니다.");
+      } else {
+        setLockError("서버에 연결할 수 없습니다.");
+      }
+    }
+  };
+
+  const lock = () => {
+    clearAccessKey();
+    setLockError(null);
+    setAuthStatus("locked");
+    setIsSidebarOpen(false);
+  };
 
   const itemsQuery = useQuery({
     queryKey: ["items"],
     queryFn: getItems,
+    enabled: authStatus === "authenticated",
   });
+
+  if (authStatus !== "authenticated") {
+    return (
+      <LockedScreen
+        isChecking={authStatus === "checking"}
+        error={lockError}
+        onUnlock={unlock}
+      />
+    );
+  }
 
   const createItemMutation = useMutation({
     mutationFn: createItem,
@@ -517,6 +700,10 @@ function App() {
             <strong>Personal workspace</strong>
             <span>Capture, then organize</span>
           </div>
+          <button type="button" className="lock-button" onClick={lock}>
+            <Icon name="lock" size={15} />
+            <span>잠금</span>
+          </button>
         </div>
       </aside>
 

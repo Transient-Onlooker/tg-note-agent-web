@@ -1,3 +1,5 @@
+import { API_BASE_URL, authenticatedFetch } from "./auth";
+
 export interface Item {
   id: string;
   capture_id: string | null;
@@ -17,11 +19,8 @@ export interface Item {
   version: number;
 }
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8787";
-
 export async function getItems(): Promise<Item[]> {
-  const response = await fetch(`${API_BASE_URL}/api/items`);
+  const response = await authenticatedFetch(`${API_BASE_URL}/api/items`);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch items: ${response.status}`);
@@ -38,7 +37,7 @@ export async function createItem(body: string): Promise<void> {
     throw new Error("Item body cannot be empty");
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/items`, {
+  const response = await authenticatedFetch(`${API_BASE_URL}/api/items`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json; charset=utf-8",
@@ -52,7 +51,7 @@ export async function createItem(body: string): Promise<void> {
 }
 
 export async function deleteItem(id: string): Promise<void> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_BASE_URL}/api/items/${encodeURIComponent(id)}`,
     {
       method: "DELETE",
