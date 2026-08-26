@@ -1,14 +1,29 @@
+# Secrets
 .env
-.venv/
-__pycache__/
-.pytest_cache/
-.pytest_tmp/
-*.pyc
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Cloudflare
+.wrangler/
+
+# Local databases / migration material
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.db
+
+# Logs
 *.log
-data/*.sqlite
-data/*.sqlite-*
-images/archive/
-*.jpg
-*.jpeg
-*.png
-*.webp
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/

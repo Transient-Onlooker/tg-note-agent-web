@@ -1,1 +1,0 @@
-"""Database and schema models."""

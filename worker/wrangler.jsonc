@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tg-note-agent-web-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-26"
+
+  // D1은 DB 생성 후 추가:
+  //
+  // "d1_databases": [
+  //   {
+  //     "binding": "DB",
+  //     "database_name": "note-relay",
+  //     "database_id": "..."
+  //   }
+  // ]
+}
