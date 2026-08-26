@@ -301,12 +301,8 @@ function LockedScreen({
 }
 
 function App() {
-  const [draft, setDraft] = useState("");
-  const [activeView, setActiveView] = useState<ViewId>("inbox");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
   const [lockError, setLockError] = useState<string | null>(null);
-  const queryClient = useQueryClient();
 
   useEffect(() => {
     let isMounted = true;
@@ -376,14 +372,7 @@ function App() {
     clearAccessKey();
     setLockError(null);
     setAuthStatus("locked");
-    setIsSidebarOpen(false);
   };
-
-  const itemsQuery = useQuery({
-    queryKey: ["items"],
-    queryFn: getItems,
-    enabled: authStatus === "authenticated",
-  });
 
   if (authStatus !== "authenticated") {
     return (
@@ -394,6 +383,20 @@ function App() {
       />
     );
   }
+
+  return <AuthenticatedApp onLock={lock} />;
+}
+
+function AuthenticatedApp({ onLock }: { onLock: () => void }) {
+  const [draft, setDraft] = useState("");
+  const [activeView, setActiveView] = useState<ViewId>("inbox");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  const itemsQuery = useQuery({
+    queryKey: ["items"],
+    queryFn: getItems,
+  });
 
   const createItemMutation = useMutation({
     mutationFn: createItem,
@@ -700,7 +703,7 @@ function App() {
             <strong>Personal workspace</strong>
             <span>Capture, then organize</span>
           </div>
-          <button type="button" className="lock-button" onClick={lock}>
+          <button type="button" className="lock-button" onClick={onLock}>
             <Icon name="lock" size={15} />
             <span>잠금</span>
           </button>
