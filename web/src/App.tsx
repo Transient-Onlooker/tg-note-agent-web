@@ -37,6 +37,8 @@ import { NotesView } from "./views/NotesView";
 import { ArchiveView } from "./views/ArchiveView";
 import { PurchaseView } from "./views/PurchaseView";
 import { PrintQueueView } from "./views/PrintQueueView";
+import { TodayView } from "./views/TodayView";
+import { getTodayRange } from "./utils/date";
 import "./App.css";
 
 type AuthStatus = "checking" | "locked" | "authenticated";
@@ -141,8 +143,14 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const queryClient = useQueryClient();
   useRealtimeSync(queryClient);
 
+  const todayRange = getTodayRange();
   const inboxFilters = { kind: "inbox" as const, status: "active" as const };
   const notesFilters = { kind: "note" as const, status: "active" as const };
+  const todayFilters = {
+    status: "active" as const,
+    dueFrom: todayRange.dueFrom,
+    dueTo: todayRange.dueTo,
+  };
 
   const itemsQuery = useQuery({
     queryKey: itemQueryKeys.list(inboxFilters),
@@ -153,6 +161,16 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     queryKey: itemQueryKeys.list(notesFilters),
     queryFn: () => listItems({ kind: "note", status: "active" }),
     enabled: activeView === "notes",
+  });
+
+  const todayQuery = useQuery({
+    queryKey: itemQueryKeys.list(todayFilters),
+    queryFn: () => listItems({
+      status: "active",
+      dueFrom: todayRange.dueFrom,
+      dueTo: todayRange.dueTo,
+    }),
+    enabled: activeView === "today",
   });
 
   const archiveFilters = { status: "archived" as const };
@@ -217,6 +235,38 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     },
     onError: () => {
       setEditError("수정하지 못했습니다.");
+    },
+  });
+
+  const updateDueMutation = useMutation({
+    mutationFn: ({ id, dueAt }: { id: string; dueAt: string | null }) =>
+      updateItemFields(id, { due_at: dueAt }),
+    onSuccess: async (updatedItem: Item) => {
+      queryClient.setQueriesData<Item[]>(
+        { queryKey: itemQueryKeys.all },
+        (items) =>
+          items?.map((item) =>
+            item.id === updatedItem.id ? updatedItem : item,
+          ),
+      );
+
+      const isDueToday =
+        updatedItem.status === "active" &&
+        updatedItem.due_at !== null &&
+        updatedItem.due_at >= todayRange.dueFrom &&
+        updatedItem.due_at < todayRange.dueTo;
+
+      queryClient.setQueryData<Item[]>(
+        itemQueryKeys.list(todayFilters),
+        (items) =>
+          isDueToday
+            ? [
+                updatedItem,
+                ...(items ?? []).filter((item) => item.id !== updatedItem.id),
+              ]
+            : items?.filter((item) => item.id !== updatedItem.id),
+      );
+      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
     },
   });
 
@@ -372,6 +422,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
 
   const inboxCount = itemsQuery.isSuccess ? itemsQuery.data.length : null;
   const notesCount = notesQuery.isSuccess ? notesQuery.data.length : null;
+  const todayCount = todayQuery.isSuccess ? todayQuery.data.length : null;
   const archiveCount = archiveQuery.isSuccess ? archiveQuery.data.length : null;
   const activeNavigationItem =
     navigationGroups
@@ -449,6 +500,22 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     classifyItemMutation.mutate({ id: item.id, kind });
   };
 
+  const setItemDueToday = (item: Item) => {
+    if (updateDueMutation.isPending) {
+      return;
+    }
+
+    updateDueMutation.mutate({ id: item.id, dueAt: todayRange.dueFrom });
+  };
+
+  const clearItemDue = (item: Item) => {
+    if (updateDueMutation.isPending) {
+      return;
+    }
+
+    updateDueMutation.mutate({ id: item.id, dueAt: null });
+  };
+
   return (
     <>
       <AppShell
@@ -486,6 +553,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isArchiving={archiveItemMutation.isPending}
             isPurchasing={classifyItemMutation.isPending}
             isSendingToPrintQueue={classifyItemMutation.isPending}
+            isSettingToday={updateDueMutation.isPending}
             onDraftChange={(value) => {
               setDraft(value);
 
@@ -511,6 +579,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onArchive={(item) => archiveItemMutation.mutate(item.id)}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
+            onSetToday={setItemDueToday}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "notes" ? (
@@ -530,6 +599,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isArchiving={archiveItemMutation.isPending}
             isPurchasing={classifyItemMutation.isPending}
             isSendingToPrintQueue={classifyItemMutation.isPending}
+            isSettingToday={updateDueMutation.isPending}
             deleteError={deleteItemMutation.isError}
             onRetry={() => {
               void notesQuery.refetch();
@@ -548,6 +618,41 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onArchive={(item) => archiveItemMutation.mutate(item.id)}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
+            onSetToday={setItemDueToday}
+            onDeleteRequest={openDeleteConfirmation}
+          />
+        ) : activeView === "today" ? (
+          <TodayView
+            items={todayQuery.data ?? []}
+            notesCount={todayCount}
+            isPending={todayQuery.isPending}
+            isError={todayQuery.isError}
+            isSuccess={todayQuery.isSuccess}
+            isFetching={todayQuery.isFetching}
+            editingItemId={editingItemId}
+            editDraft={editDraft}
+            editError={editError}
+            isUpdating={updateItemMutation.isPending}
+            isDeleting={deleteItemMutation.isPending}
+            isMovingToInbox={classifyItemMutation.isPending}
+            isArchiving={archiveItemMutation.isPending}
+            isClearingDue={updateDueMutation.isPending}
+            deleteError={deleteItemMutation.isError}
+            onRetry={() => {
+              void todayQuery.refetch();
+            }}
+            onStartEditing={startEditing}
+            onEditDraftChange={(value) => {
+              setEditDraft(value);
+
+              if (editError) {
+                setEditError(null);
+              }
+            }}
+            onCancelEditing={cancelEditing}
+            onSaveEditing={saveEditing}
+            onClearDue={clearItemDue}
+            onArchive={(item) => archiveItemMutation.mutate(item.id)}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "purchase" ? (

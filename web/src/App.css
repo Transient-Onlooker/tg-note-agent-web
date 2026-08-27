@@ -836,6 +836,7 @@
 .note-card__archive,
 .note-card__purchase,
 .note-card__print-queue,
+.note-card__today,
 .note-card__delete {
   position: absolute;
   top: 14px;
@@ -875,6 +876,10 @@
   right: 184px;
 }
 
+.note-card__today {
+  right: 218px;
+}
+
 .note-card__delete {
   right: 14px;
 }
@@ -889,6 +894,8 @@
 .note-card__purchase:focus-visible,
 .note-card:hover .note-card__print-queue,
 .note-card__print-queue:focus-visible,
+.note-card:hover .note-card__today,
+.note-card__today:focus-visible,
 .note-card:hover .note-card__delete,
 .note-card__delete:focus-visible {
   opacity: 1;
@@ -919,6 +926,11 @@
   background: var(--accent-soft);
 }
 
+.note-card__today:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .note-card__delete:hover:not(:disabled) {
   color: var(--danger);
   background: var(--danger-soft);
@@ -945,6 +957,11 @@
 }
 
 .note-card__print-queue:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.note-card__today:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -1524,6 +1541,10 @@
   }
 
   .note-card__print-queue {
+    opacity: 1;
+  }
+
+  .note-card__today {
     opacity: 1;
   }
 

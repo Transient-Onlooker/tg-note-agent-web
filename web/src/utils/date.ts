@@ -12,3 +12,16 @@ export function formatCreatedAt(value: string) {
     minute: "2-digit",
   });
 }
+
+export function getTodayRange() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  return {
+    dueFrom: start.toISOString(),
+    dueTo: end.toISOString(),
+  };
+}

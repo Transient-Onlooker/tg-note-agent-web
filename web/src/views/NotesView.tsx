@@ -25,13 +25,17 @@ type NotesViewProps = {
   onEditDraftChange: (value: string) => void;
   onCancelEditing: () => void;
   onSaveEditing: () => void;
-  onMoveToInbox: (item: Item) => void;
+  onMoveToInbox?: (item: Item) => void;
   onArchive: (item: Item) => void;
   onPurchase?: (item: Item) => void;
   isPurchasing?: boolean;
   isSendingToPrintQueue?: boolean;
+  isSettingToday?: boolean;
   onDeleteRequest: (item: Item) => void;
   onSendToPrintQueue?: (item: Item) => void;
+  onSetToday?: (item: Item) => void;
+  onClearDue?: (item: Item) => void;
+  isClearingDue?: boolean;
 };
 
 export function NotesView({
@@ -62,8 +66,12 @@ export function NotesView({
   onPurchase,
   isPurchasing = false,
   isSendingToPrintQueue = false,
+  isSettingToday = false,
   onDeleteRequest,
   onSendToPrintQueue,
+  onSetToday,
+  onClearDue,
+  isClearingDue = false,
 }: NotesViewProps) {
   return (
     <section className="notes-view" aria-labelledby="notes-title">
@@ -214,15 +222,17 @@ export function NotesView({
                   >
                     <Icon name="edit" size={16} />
                   </button>
-                  <button
-                    className="note-card__classify"
-                    type="button"
-                    aria-label="Inbox로 이동"
-                    disabled={isMovingToInbox}
-                    onClick={() => onMoveToInbox(item)}
-                  >
-                    <Icon name="inbox" size={16} />
-                  </button>
+                  {onMoveToInbox && (
+                    <button
+                      className="note-card__classify"
+                      type="button"
+                      aria-label="Inbox로 이동"
+                      disabled={isMovingToInbox}
+                      onClick={() => onMoveToInbox(item)}
+                    >
+                      <Icon name="inbox" size={16} />
+                    </button>
+                  )}
                   {onPurchase && (
                     <button
                       className="note-card__purchase"
@@ -243,6 +253,28 @@ export function NotesView({
                       onClick={() => onSendToPrintQueue(item)}
                     >
                       <Icon name="print-queue" size={16} />
+                    </button>
+                  )}
+                  {onSetToday && (
+                    <button
+                      className="note-card__today"
+                      type="button"
+                      aria-label="오늘로 지정"
+                      disabled={isSettingToday}
+                      onClick={() => onSetToday(item)}
+                    >
+                      <Icon name="today" size={16} />
+                    </button>
+                  )}
+                  {onClearDue && (
+                    <button
+                      className="note-card__today"
+                      type="button"
+                      aria-label="기한 제거"
+                      disabled={isClearingDue}
+                      onClick={() => onClearDue(item)}
+                    >
+                      <Icon name="close" size={16} />
                     </button>
                   )}
                   <button

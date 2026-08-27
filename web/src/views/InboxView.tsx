@@ -27,6 +27,7 @@ type InboxViewProps = {
   isArchiving: boolean;
   isPurchasing: boolean;
   isSendingToPrintQueue: boolean;
+  isSettingToday: boolean;
 
   onDraftChange: (value: string) => void;
   onCreate: () => void;
@@ -40,6 +41,7 @@ type InboxViewProps = {
   onArchive: (item: Item) => void;
   onPurchase: (item: Item) => void;
   onSendToPrintQueue: (item: Item) => void;
+  onSetToday: (item: Item) => void;
 
   onDeleteRequest: (item: Item) => void;
 };
@@ -64,6 +66,7 @@ export function InboxView({
   isArchiving,
   isPurchasing,
   isSendingToPrintQueue,
+  isSettingToday,
   onDraftChange,
   onCreate,
   onRetry,
@@ -75,6 +78,7 @@ export function InboxView({
   onArchive,
   onPurchase,
   onSendToPrintQueue,
+  onSetToday,
   onDeleteRequest,
 }: InboxViewProps) {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -295,7 +299,7 @@ export function InboxView({
                 <button
                   className="note-card__classify"
                   type="button"
-                  aria-label="Notes濡 이동"
+                  aria-label="Notes로 이동"
                   disabled={isClassifying}
                   onClick={() => onClassify(item)}
                 >
@@ -336,6 +340,18 @@ export function InboxView({
                   onClick={() => onSendToPrintQueue(item)}
                 >
                   <Icon name="print-queue" size={16} />
+                </button>
+              )}
+
+              {editingItemId !== item.id && (
+                <button
+                  className="note-card__today"
+                  type="button"
+                  aria-label="오늘로 지정"
+                  disabled={isSettingToday}
+                  onClick={() => onSetToday(item)}
+                >
+                  <Icon name="today" size={16} />
                 </button>
               )}
 
