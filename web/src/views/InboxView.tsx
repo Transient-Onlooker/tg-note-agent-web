@@ -25,6 +25,7 @@ type InboxViewProps = {
   isUpdating: boolean;
   isClassifying: boolean;
   isArchiving: boolean;
+  isPurchasing: boolean;
 
   onDraftChange: (value: string) => void;
   onCreate: () => void;
@@ -36,6 +37,7 @@ type InboxViewProps = {
   onSaveEditing: () => void;
   onClassify: (item: Item) => void;
   onArchive: (item: Item) => void;
+  onPurchase: (item: Item) => void;
 
   onDeleteRequest: (item: Item) => void;
 };
@@ -58,6 +60,7 @@ export function InboxView({
   isUpdating,
   isClassifying,
   isArchiving,
+  isPurchasing,
   onDraftChange,
   onCreate,
   onRetry,
@@ -67,6 +70,7 @@ export function InboxView({
   onSaveEditing,
   onClassify,
   onArchive,
+  onPurchase,
   onDeleteRequest,
 }: InboxViewProps) {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -304,6 +308,18 @@ export function InboxView({
                   onClick={() => onArchive(item)}
                 >
                   <Icon name="archive" size={16} />
+                </button>
+              )}
+
+              {editingItemId !== item.id && (
+                <button
+                  className="note-card__purchase"
+                  type="button"
+                  aria-label="Purchase로 이동"
+                  disabled={isPurchasing}
+                  onClick={() => onPurchase(item)}
+                >
+                  <Icon name="purchase" size={16} />
                 </button>
               )}
 

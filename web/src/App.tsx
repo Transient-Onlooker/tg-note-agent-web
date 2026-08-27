@@ -35,6 +35,7 @@ import { TrashView } from "./views/TrashView";
 import { InboxView } from "./views/InboxView";
 import { NotesView } from "./views/NotesView";
 import { ArchiveView } from "./views/ArchiveView";
+import { PurchaseView } from "./views/PurchaseView";
 import "./App.css";
 
 type AuthStatus = "checking" | "locked" | "authenticated";
@@ -160,6 +161,13 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     enabled: activeView === "archive",
   });
 
+  const purchaseFilters = { kind: "purchase" as const, status: "active" as const };
+  const purchaseQuery = useQuery({
+    queryKey: itemQueryKeys.list(purchaseFilters),
+    queryFn: () => listItems({ kind: "purchase", status: "active" }),
+    enabled: activeView === "purchase",
+  });
+
   const trashQuery = useQuery({
     queryKey: ["trash"],
     queryFn: listTrash,
@@ -205,7 +213,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   });
 
   const classifyItemMutation = useMutation({
-    mutationFn: ({ id, kind }: { id: string; kind: "inbox" | "note" }) =>
+    mutationFn: ({ id, kind }: { id: string; kind: "inbox" | "note" | "purchase" }) =>
       updateItemFields(id, { kind }),
     onSuccess: async (updatedItem: Item) => {
       queryClient.setQueryData<Item[]>(
@@ -222,6 +230,16 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
         itemQueryKeys.list(notesFilters),
         (items) =>
           updatedItem.kind === "note"
+            ? [
+                updatedItem,
+                ...(items ?? []).filter((item) => item.id !== updatedItem.id),
+              ]
+          : items?.filter((item) => item.id !== updatedItem.id),
+      );
+      queryClient.setQueryData<Item[]>(
+        itemQueryKeys.list(purchaseFilters),
+        (items) =>
+          updatedItem.kind === "purchase"
             ? [
                 updatedItem,
                 ...(items ?? []).filter((item) => item.id !== updatedItem.id),
@@ -260,6 +278,10 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     updateList(
       itemQueryKeys.list(archiveFilters),
       updatedItem.status === "archived",
+    );
+    updateList(
+      itemQueryKeys.list(purchaseFilters),
+      updatedItem.status === "active" && updatedItem.kind === "purchase",
     );
   };
 
@@ -397,7 +419,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     deleteItemMutation.mutate(deleteTarget.id);
   };
 
-  const classifyItem = (item: Item, kind: "inbox" | "note") => {
+  const classifyItem = (item: Item, kind: "inbox" | "note" | "purchase") => {
     if (classifyItemMutation.isPending) {
       return;
     }
@@ -440,6 +462,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isUpdating={updateItemMutation.isPending}
             isClassifying={classifyItemMutation.isPending}
             isArchiving={archiveItemMutation.isPending}
+            isPurchasing={classifyItemMutation.isPending}
             onDraftChange={(value) => {
               setDraft(value);
 
@@ -463,6 +486,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onSaveEditing={saveEditing}
             onClassify={(item) => classifyItem(item, "note")}
             onArchive={(item) => archiveItemMutation.mutate(item.id)}
+            onPurchase={(item) => classifyItem(item, "purchase")}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "notes" ? (
@@ -480,9 +504,44 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isDeleting={deleteItemMutation.isPending}
             isMovingToInbox={classifyItemMutation.isPending}
             isArchiving={archiveItemMutation.isPending}
+            isPurchasing={classifyItemMutation.isPending}
             deleteError={deleteItemMutation.isError}
             onRetry={() => {
               void notesQuery.refetch();
+            }}
+            onStartEditing={startEditing}
+            onEditDraftChange={(value) => {
+              setEditDraft(value);
+
+              if (editError) {
+                setEditError(null);
+              }
+            }}
+            onCancelEditing={cancelEditing}
+            onSaveEditing={saveEditing}
+            onMoveToInbox={(item) => classifyItem(item, "inbox")}
+            onArchive={(item) => archiveItemMutation.mutate(item.id)}
+            onPurchase={(item) => classifyItem(item, "purchase")}
+            onDeleteRequest={openDeleteConfirmation}
+          />
+        ) : activeView === "purchase" ? (
+          <PurchaseView
+            items={purchaseQuery.data ?? []}
+            notesCount={purchaseQuery.isSuccess ? purchaseQuery.data.length : null}
+            isPending={purchaseQuery.isPending}
+            isError={purchaseQuery.isError}
+            isSuccess={purchaseQuery.isSuccess}
+            isFetching={purchaseQuery.isFetching}
+            editingItemId={editingItemId}
+            editDraft={editDraft}
+            editError={editError}
+            isUpdating={updateItemMutation.isPending}
+            isDeleting={deleteItemMutation.isPending}
+            isMovingToInbox={classifyItemMutation.isPending}
+            isArchiving={archiveItemMutation.isPending}
+            deleteError={deleteItemMutation.isError}
+            onRetry={() => {
+              void purchaseQuery.refetch();
             }}
             onStartEditing={startEditing}
             onEditDraftChange={(value) => {

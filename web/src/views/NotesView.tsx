@@ -3,6 +3,9 @@ import { Icon } from "../components/Icon";
 import { formatCreatedAt } from "../utils/date";
 
 type NotesViewProps = {
+  viewTitle?: string;
+  viewDescription?: string;
+  emptyDescription?: string;
   items: Item[];
   notesCount: number | null;
   isPending: boolean;
@@ -24,10 +27,15 @@ type NotesViewProps = {
   onSaveEditing: () => void;
   onMoveToInbox: (item: Item) => void;
   onArchive: (item: Item) => void;
+  onPurchase?: (item: Item) => void;
+  isPurchasing?: boolean;
   onDeleteRequest: (item: Item) => void;
 };
 
 export function NotesView({
+  viewTitle = "Notes",
+  viewDescription = "Keep your organized notes in one place.",
+  emptyDescription = "Inbox의 메모를 Notes로 분류해 보세요.",
   items,
   notesCount,
   isPending,
@@ -49,6 +57,8 @@ export function NotesView({
   onSaveEditing,
   onMoveToInbox,
   onArchive,
+  onPurchase,
+  isPurchasing = false,
   onDeleteRequest,
 }: NotesViewProps) {
   return (
@@ -57,13 +67,13 @@ export function NotesView({
         <div>
           <p className="eyebrow">Workspace</p>
           <div className="view-title-row">
-            <h1 id="notes-title">Notes</h1>
+            <h1 id="notes-title">{viewTitle}</h1>
             {notesCount !== null && (
               <span className="count-pill">{notesCount}</span>
             )}
           </div>
           <p className="view-description">
-            Keep your organized notes in one place.
+            {viewDescription}
           </p>
         </div>
       </header>
@@ -76,8 +86,8 @@ export function NotesView({
 
       <div className="list-heading">
         <div>
-          <h2>Notes</h2>
-          <span>{notesCount === null ? "Notes" : `${notesCount}개의 메모`}</span>
+          <h2>{viewTitle}</h2>
+          <span>{notesCount === null ? viewTitle : `${notesCount}개의 메모`}</span>
         </div>
         {isFetching && !isPending && (
           <span className="sync-status" role="status">
@@ -124,7 +134,7 @@ export function NotesView({
             </span>
             <div>
               <h3>Notes가 비어 있습니다.</h3>
-              <p>Inbox의 메모를 Notes로 분류해 보세요.</p>
+              <p>{emptyDescription}</p>
             </div>
           </div>
         )}
@@ -209,6 +219,17 @@ export function NotesView({
                   >
                     <Icon name="inbox" size={16} />
                   </button>
+                  {onPurchase && (
+                    <button
+                      className="note-card__purchase"
+                      type="button"
+                      aria-label="Purchase로 이동"
+                      disabled={isPurchasing}
+                      onClick={() => onPurchase(item)}
+                    >
+                      <Icon name="purchase" size={16} />
+                    </button>
+                  )}
                   <button
                     className="note-card__archive"
                     type="button"
