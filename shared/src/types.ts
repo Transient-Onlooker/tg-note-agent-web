@@ -61,6 +61,7 @@ export interface PrintJobProperties {
   payment?: string;
   model_url?: string;
   note?: string;
+  queue_status?: "waiting" | "printing" | "done" | "paused";
 }
 
 export interface Project {

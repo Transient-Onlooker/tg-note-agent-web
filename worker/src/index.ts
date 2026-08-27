@@ -21,6 +21,8 @@ type Bindings = {
 
 type CreateItemRequest = {
   body?: string;
+  kind?: unknown;
+  properties_json?: unknown;
 };
 
 const ITEM_KINDS = [
@@ -286,6 +288,18 @@ app.post("/api/items", async (c) => {
     );
   }
 
+  const kind = payload.kind ?? "inbox";
+  if (!isItemKind(kind)) {
+    return c.json({ error: "invalid_kind" }, 400);
+  }
+
+  const propertiesJson = payload.properties_json === undefined
+    ? "{}"
+    : normalizePropertiesJson(payload.properties_json);
+  if (propertiesJson === undefined) {
+    return c.json({ error: "invalid_properties_json" }, 400);
+  }
+
   const captureId = crypto.randomUUID();
   const itemId = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -311,12 +325,13 @@ app.post("/api/items", async (c) => {
           kind,
           status,
           body,
+          properties_json,
           created_at,
           updated_at
         )
-        VALUES (?, ?, 'inbox', 'active', ?, ?, ?)
+        VALUES (?, ?, ?, 'active', ?, ?, ?, ?)
       `)
-      .bind(itemId, captureId, body, now, now),
+      .bind(itemId, captureId, kind, body, propertiesJson, now, now),
   ]);
 
   if (!results.every((result) => result.success)) {
@@ -341,10 +356,11 @@ app.post("/api/items", async (c) => {
       item: {
         id: itemId,
         capture_id: captureId,
-        kind: "inbox",
+        kind,
         status: "active",
         title: null,
         body,
+        properties_json: propertiesJson,
         created_at: now,
         updated_at: now,
         version: 1,

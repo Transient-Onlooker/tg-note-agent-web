@@ -148,6 +148,24 @@ export async function createItem(body: string): Promise<void> {
   }
 }
 
+export async function createPrintJob(): Promise<void> {
+  const response = await authenticatedFetch(`${API_BASE_URL}/api/items`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify({
+      body: "새 출력 작업",
+      kind: "print_job",
+      properties_json: "{}",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to create print job: ${response.status}`);
+  }
+}
+
 export async function deleteItem(id: string): Promise<void> {
   const response = await authenticatedFetch(
     `${API_BASE_URL}/api/items/${encodeURIComponent(id)}`,

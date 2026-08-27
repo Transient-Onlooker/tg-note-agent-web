@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-query";
 import {
   createItem,
+  createPrintJob,
   deleteItem,
   itemQueryKeys,
   listItems,
@@ -16,6 +17,7 @@ import {
   restoreItem,
   updateItemFields,
   type Item,
+  type UpdateItemInput,
 } from "./api/items";
 import {
   AUTH_EXPIRED_EVENT,
@@ -217,9 +219,16 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     },
   });
 
+  const createPrintJobMutation = useMutation({
+    mutationFn: createPrintJob,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+    },
+  });
+
   const updateItemMutation = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: string }) =>
-      updateItemFields(id, { body }),
+    mutationFn: ({ id, input }: { id: string; input: UpdateItemInput }) =>
+      updateItemFields(id, input),
     onSuccess: async (updatedItem: Item) => {
       queryClient.setQueriesData<Item[]>(
         { queryKey: itemQueryKeys.all },
@@ -469,7 +478,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
 
     updateItemMutation.mutate({
       id: editingItemId,
-      body: trimmedBody,
+      input: { body: trimmedBody },
     });
   };
 
@@ -691,15 +700,11 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
         ) : activeView === "print-queue" ? (
           <PrintQueueView
             items={printQueueQuery.data ?? []}
-            notesCount={printQueueQuery.isSuccess ? printQueueQuery.data.length : null}
             isPending={printQueueQuery.isPending}
             isError={printQueueQuery.isError}
-            isSuccess={printQueueQuery.isSuccess}
             isFetching={printQueueQuery.isFetching}
-            editingItemId={editingItemId}
-            editDraft={editDraft}
-            editError={editError}
             isUpdating={updateItemMutation.isPending}
+            isCreating={createPrintJobMutation.isPending}
             isDeleting={deleteItemMutation.isPending}
             isMovingToInbox={classifyItemMutation.isPending}
             isArchiving={archiveItemMutation.isPending}
@@ -707,16 +712,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onRetry={() => {
               void printQueueQuery.refetch();
             }}
-            onStartEditing={startEditing}
-            onEditDraftChange={(value) => {
-              setEditDraft(value);
-
-              if (editError) {
-                setEditError(null);
-              }
-            }}
-            onCancelEditing={cancelEditing}
-            onSaveEditing={saveEditing}
+            onUpdateItem={(id, input) => updateItemMutation.mutateAsync({ id, input })}
+            onCreate={() => createPrintJobMutation.mutate()}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
             onArchive={(item) => archiveItemMutation.mutate(item.id)}
             onDeleteRequest={openDeleteConfirmation}
