@@ -34,6 +34,7 @@ import { PlaceholderView } from "./views/PlaceholderView";
 import { TrashView } from "./views/TrashView";
 import { InboxView } from "./views/InboxView";
 import { NotesView } from "./views/NotesView";
+import { ArchiveView } from "./views/ArchiveView";
 import "./App.css";
 
 type AuthStatus = "checking" | "locked" | "authenticated";
@@ -152,6 +153,13 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     enabled: activeView === "notes",
   });
 
+  const archiveFilters = { status: "archived" as const };
+  const archiveQuery = useQuery({
+    queryKey: itemQueryKeys.list(archiveFilters),
+    queryFn: () => listItems({ status: "archived" }),
+    enabled: activeView === "archive",
+  });
+
   const trashQuery = useQuery({
     queryKey: ["trash"],
     queryFn: listTrash,
@@ -224,6 +232,55 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     },
   });
 
+  const syncStatusItemCache = (updatedItem: Item) => {
+    const updateList = (
+      queryKey: ReturnType<typeof itemQueryKeys.list>,
+      shouldInclude: boolean,
+    ) => {
+      queryClient.setQueryData<Item[]>(queryKey, (items) => {
+        if (shouldInclude) {
+          return [
+            updatedItem,
+            ...(items ?? []).filter((item) => item.id !== updatedItem.id),
+          ];
+        }
+
+        return items?.filter((item) => item.id !== updatedItem.id);
+      });
+    };
+
+    updateList(
+      itemQueryKeys.list(inboxFilters),
+      updatedItem.status === "active" && updatedItem.kind === "inbox",
+    );
+    updateList(
+      itemQueryKeys.list(notesFilters),
+      updatedItem.status === "active" && updatedItem.kind === "note",
+    );
+    updateList(
+      itemQueryKeys.list(archiveFilters),
+      updatedItem.status === "archived",
+    );
+  };
+
+  const archiveItemMutation = useMutation({
+    mutationFn: (id: string) =>
+      updateItemFields(id, { status: "archived" }),
+    onSuccess: async (updatedItem: Item) => {
+      syncStatusItemCache(updatedItem);
+      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+    },
+  });
+
+  const restoreArchivedItemMutation = useMutation({
+    mutationFn: (id: string) =>
+      updateItemFields(id, { status: "active" }),
+    onSuccess: async (updatedItem: Item) => {
+      syncStatusItemCache(updatedItem);
+      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+    },
+  });
+
   const restoreItemMutation = useMutation({
     mutationFn: restoreItem,
     onSuccess: async (restoredItem: Item) => {
@@ -271,6 +328,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
 
   const inboxCount = itemsQuery.isSuccess ? itemsQuery.data.length : null;
   const notesCount = notesQuery.isSuccess ? notesQuery.data.length : null;
+  const archiveCount = archiveQuery.isSuccess ? archiveQuery.data.length : null;
   const activeNavigationItem =
     navigationGroups
       .flatMap((group) => group.items)
@@ -381,6 +439,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             editError={editError}
             isUpdating={updateItemMutation.isPending}
             isClassifying={classifyItemMutation.isPending}
+            isArchiving={archiveItemMutation.isPending}
             onDraftChange={(value) => {
               setDraft(value);
 
@@ -403,6 +462,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
             onClassify={(item) => classifyItem(item, "note")}
+            onArchive={(item) => archiveItemMutation.mutate(item.id)}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "notes" ? (
@@ -419,6 +479,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isUpdating={updateItemMutation.isPending}
             isDeleting={deleteItemMutation.isPending}
             isMovingToInbox={classifyItemMutation.isPending}
+            isArchiving={archiveItemMutation.isPending}
             deleteError={deleteItemMutation.isError}
             onRetry={() => {
               void notesQuery.refetch();
@@ -434,6 +495,38 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
+            onArchive={(item) => archiveItemMutation.mutate(item.id)}
+            onDeleteRequest={openDeleteConfirmation}
+          />
+        ) : activeView === "archive" ? (
+          <ArchiveView
+            items={archiveQuery.data ?? []}
+            archiveCount={archiveCount}
+            isPending={archiveQuery.isPending}
+            isError={archiveQuery.isError}
+            isSuccess={archiveQuery.isSuccess}
+            isFetching={archiveQuery.isFetching}
+            editingItemId={editingItemId}
+            editDraft={editDraft}
+            editError={editError}
+            isUpdating={updateItemMutation.isPending}
+            isDeleting={deleteItemMutation.isPending}
+            isRestoring={restoreArchivedItemMutation.isPending}
+            deleteError={deleteItemMutation.isError}
+            onRetry={() => {
+              void archiveQuery.refetch();
+            }}
+            onStartEditing={startEditing}
+            onEditDraftChange={(value) => {
+              setEditDraft(value);
+
+              if (editError) {
+                setEditError(null);
+              }
+            }}
+            onCancelEditing={cancelEditing}
+            onSaveEditing={saveEditing}
+            onRestore={(item) => restoreArchivedItemMutation.mutate(item.id)}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "trash" ? (

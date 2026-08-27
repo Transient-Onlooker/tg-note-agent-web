@@ -1,142 +1,68 @@
-import type { FormEvent } from "react";
 import type { Item } from "../api/items";
 import { Icon } from "../components/Icon";
 import { formatCreatedAt } from "../utils/date";
 
-type InboxViewProps = {
+type ArchiveViewProps = {
   items: Item[];
-  inboxCount: number | null;
-
+  archiveCount: number | null;
   isPending: boolean;
   isError: boolean;
   isSuccess: boolean;
   isFetching: boolean;
-
-  draft: string;
-  isCreating: boolean;
-  createError: boolean;
-
-  deleteError: boolean;
-  isDeleting: boolean;
-
   editingItemId: string | null;
   editDraft: string;
   editError: string | null;
   isUpdating: boolean;
-  isClassifying: boolean;
-  isArchiving: boolean;
-
-  onDraftChange: (value: string) => void;
-  onCreate: () => void;
+  isDeleting: boolean;
+  isRestoring: boolean;
+  deleteError: boolean;
   onRetry: () => void;
-
   onStartEditing: (item: Item) => void;
   onEditDraftChange: (value: string) => void;
   onCancelEditing: () => void;
   onSaveEditing: () => void;
-  onClassify: (item: Item) => void;
-  onArchive: (item: Item) => void;
-
+  onRestore: (item: Item) => void;
   onDeleteRequest: (item: Item) => void;
 };
 
-export function InboxView({
+export function ArchiveView({
   items,
-  inboxCount,
+  archiveCount,
   isPending,
   isError,
   isSuccess,
   isFetching,
-  draft,
-  isCreating,
-  createError,
-  deleteError,
-  isDeleting,
   editingItemId,
   editDraft,
   editError,
   isUpdating,
-  isClassifying,
-  isArchiving,
-  onDraftChange,
-  onCreate,
+  isDeleting,
+  isRestoring,
+  deleteError,
   onRetry,
   onStartEditing,
   onEditDraftChange,
   onCancelEditing,
   onSaveEditing,
-  onClassify,
-  onArchive,
+  onRestore,
   onDeleteRequest,
-}: InboxViewProps) {
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    onCreate();
-  };
-
+}: ArchiveViewProps) {
   return (
-    <section className="inbox-view" aria-labelledby="inbox-title">
+    <section className="archive-view" aria-labelledby="archive-title">
       <header className="view-header">
         <div>
-          <p className="eyebrow">Workspace</p>
+          <p className="eyebrow">Library</p>
           <div className="view-title-row">
-            <h1 id="inbox-title">Inbox</h1>
-            {inboxCount !== null && (
-              <span className="count-pill">{inboxCount}</span>
+            <h1 id="archive-title">Archive</h1>
+            {archiveCount !== null && (
+              <span className="count-pill">{archiveCount}</span>
             )}
           </div>
           <p className="view-description">
-            떠오른 생각을 붙잡고, 나중에 천천히 정리하세요.
+            Keep completed or inactive notes out of your active workspace.
           </p>
         </div>
       </header>
-
-      <form className="capture-card" onSubmit={handleSubmit}>
-        <div className="capture-card__heading">
-          <span className="capture-icon" aria-hidden="true">
-            <Icon name="relay" size={19} />
-          </span>
-          <div>
-            <strong>Quick capture</strong>
-            <span>Inbox에 바로 추가</span>
-          </div>
-        </div>
-
-        <textarea
-          className="capture-input"
-          value={draft}
-          onChange={(event) => onDraftChange(event.target.value)}
-          placeholder="메모를 입력하세요..."
-          aria-label="새 메모"
-          rows={3}
-        />
-
-        <div className="capture-card__footer">
-          <button
-            className="capture-submit"
-            type="submit"
-            disabled={!draft.trim() || isCreating}
-          >
-            {isCreating ? (
-              <>
-                <span className="button-spinner" aria-hidden="true" />
-                저장 중...
-              </>
-            ) : (
-              <>
-                저장
-                <Icon name="send" size={16} />
-              </>
-            )}
-          </button>
-        </div>
-
-        {createError && (
-          <p className="inline-error" role="alert">
-            저장하지 못했습니다. 잠시 후 다시 시도해 주세요.
-          </p>
-        )}
-      </form>
 
       {deleteError && (
         <p className="inline-error delete-error" role="alert">
@@ -146,23 +72,22 @@ export function InboxView({
 
       <div className="list-heading">
         <div>
-          <h2>Recent notes</h2>
+          <h2>Archived notes</h2>
           <span>
-            {inboxCount === null ? "Inbox" : `${inboxCount}개의 메모`}
+            {archiveCount === null ? "Archive" : `${archiveCount}개의 메모`}
           </span>
         </div>
-
         {isFetching && !isPending && (
           <span className="sync-status" role="status">
             <span className="sync-dot" aria-hidden="true" />
-            동기화 중
+            Syncing
           </span>
         )}
       </div>
 
       <div className="note-list" aria-live="polite">
         {isPending && (
-          <div className="loading-list" aria-label="메모를 불러오는 중">
+          <div className="loading-list" aria-label="Loading archived notes">
             {[0, 1, 2].map((item) => (
               <div className="note-skeleton" key={item}>
                 <span className="skeleton-icon" />
@@ -181,7 +106,7 @@ export function InboxView({
               <Icon name="refresh" size={22} />
             </span>
             <div>
-              <h3>메모를 불러오지 못했습니다.</h3>
+              <h3>Archive를 불러오지 못했습니다.</h3>
               <p>Worker 연결 상태를 확인한 뒤 다시 시도해 주세요.</p>
             </div>
             <button type="button" onClick={onRetry}>
@@ -193,11 +118,11 @@ export function InboxView({
         {isSuccess && items.length === 0 && (
           <div className="state-panel state-panel--empty">
             <span className="state-panel__icon">
-              <Icon name="inbox" size={24} />
+              <Icon name="archive" size={24} />
             </span>
             <div>
-              <h3>Inbox가 비어 있습니다.</h3>
-              <p>위 입력창에서 첫 메모를 남겨 보세요.</p>
+              <h3>Archive가 비어 있습니다.</h3>
+              <p>보관한 메모가 이곳에 표시됩니다.</p>
             </div>
           </div>
         )}
@@ -211,29 +136,24 @@ export function InboxView({
               key={item.id}
             >
               <span className="note-card__marker" aria-hidden="true">
-                <Icon name="notes" size={18} />
+                <Icon name="archive" size={18} />
               </span>
-
               <div className="note-card__content">
                 {editingItemId === item.id ? (
                   <div className="note-card__editor">
                     <textarea
                       className="note-card__textarea"
                       value={editDraft}
-                      onChange={(event) =>
-                        onEditDraftChange(event.target.value)
-                      }
+                      onChange={(event) => onEditDraftChange(event.target.value)}
                       aria-label="메모 수정"
                       rows={4}
                       autoFocus
                     />
-
                     {editError && (
                       <p className="note-card__edit-error" role="alert">
                         {editError}
                       </p>
                     )}
-
                     <div className="note-card__editor-actions">
                       <button
                         className="note-card__cancel"
@@ -243,7 +163,6 @@ export function InboxView({
                       >
                         취소
                       </button>
-
                       <button
                         className="note-card__save"
                         type="button"
@@ -257,56 +176,37 @@ export function InboxView({
                 ) : (
                   <>
                     <p className="note-card__body">{item.body}</p>
-
                     <div className="note-card__meta">
                       <span className="kind-badge">{item.kind}</span>
-                      <span
-                        className="meta-separator"
-                        aria-hidden="true"
-                      />
-                      <time dateTime={item.created_at}>
-                        {formatCreatedAt(item.created_at)}
+                      <span className="meta-separator" aria-hidden="true" />
+                      <time dateTime={item.updated_at}>
+                        {formatCreatedAt(item.updated_at)}
                       </time>
                     </div>
                   </>
                 )}
               </div>
-
               {editingItemId !== item.id && (
-                <button
-                  className="note-card__edit"
-                  type="button"
-                  aria-label="메모 수정"
-                  onClick={() => onStartEditing(item)}
-                >
-                  <Icon name="edit" size={16} />
-                </button>
+                <>
+                  <button
+                    className="note-card__edit"
+                    type="button"
+                    aria-label="메모 수정"
+                    onClick={() => onStartEditing(item)}
+                  >
+                    <Icon name="edit" size={16} />
+                  </button>
+                  <button
+                    className="note-card__classify"
+                    type="button"
+                    aria-label="활성 메모로 복원"
+                    disabled={isRestoring}
+                    onClick={() => onRestore(item)}
+                  >
+                    <Icon name="inbox" size={16} />
+                  </button>
+                </>
               )}
-
-              {editingItemId !== item.id && (
-                <button
-                  className="note-card__classify"
-                  type="button"
-                  aria-label="Notes濡 이동"
-                  disabled={isClassifying}
-                  onClick={() => onClassify(item)}
-                >
-                  <Icon name="notes" size={16} />
-                </button>
-              )}
-
-              {editingItemId !== item.id && (
-                <button
-                  className="note-card__archive"
-                  type="button"
-                  aria-label="Archive로 이동"
-                  disabled={isArchiving}
-                  onClick={() => onArchive(item)}
-                >
-                  <Icon name="archive" size={16} />
-                </button>
-              )}
-
               <button
                 className="note-card__delete"
                 type="button"

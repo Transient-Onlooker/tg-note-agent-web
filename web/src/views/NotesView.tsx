@@ -15,6 +15,7 @@ type NotesViewProps = {
   isUpdating: boolean;
   isDeleting: boolean;
   isMovingToInbox: boolean;
+  isArchiving: boolean;
   deleteError: boolean;
   onRetry: () => void;
   onStartEditing: (item: Item) => void;
@@ -22,6 +23,7 @@ type NotesViewProps = {
   onCancelEditing: () => void;
   onSaveEditing: () => void;
   onMoveToInbox: (item: Item) => void;
+  onArchive: (item: Item) => void;
   onDeleteRequest: (item: Item) => void;
 };
 
@@ -38,6 +40,7 @@ export function NotesView({
   isUpdating,
   isDeleting,
   isMovingToInbox,
+  isArchiving,
   deleteError,
   onRetry,
   onStartEditing,
@@ -45,6 +48,7 @@ export function NotesView({
   onCancelEditing,
   onSaveEditing,
   onMoveToInbox,
+  onArchive,
   onDeleteRequest,
 }: NotesViewProps) {
   return (
@@ -204,6 +208,15 @@ export function NotesView({
                     onClick={() => onMoveToInbox(item)}
                   >
                     <Icon name="inbox" size={16} />
+                  </button>
+                  <button
+                    className="note-card__archive"
+                    type="button"
+                    aria-label="Archive로 이동"
+                    disabled={isArchiving}
+                    onClick={() => onArchive(item)}
+                  >
+                    <Icon name="archive" size={16} />
                   </button>
                 </>
               )}

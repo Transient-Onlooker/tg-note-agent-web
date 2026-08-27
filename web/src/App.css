@@ -833,6 +833,7 @@
 
 .note-card__edit,
 .note-card__classify,
+.note-card__archive,
 .note-card__delete {
   position: absolute;
   top: 14px;
@@ -860,6 +861,10 @@
   right: 82px;
 }
 
+.note-card__archive {
+  right: 116px;
+}
+
 .note-card__delete {
   right: 14px;
 }
@@ -868,6 +873,8 @@
 .note-card__edit:focus-visible,
 .note-card:hover .note-card__classify,
 .note-card__classify:focus-visible,
+.note-card:hover .note-card__archive,
+.note-card__archive:focus-visible,
 .note-card:hover .note-card__delete,
 .note-card__delete:focus-visible {
   opacity: 1;
@@ -883,6 +890,11 @@
   background: var(--accent-soft);
 }
 
+.note-card__archive:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .note-card__delete:hover:not(:disabled) {
   color: var(--danger);
   background: var(--danger-soft);
@@ -894,6 +906,11 @@
 }
 
 .note-card__classify:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.note-card__archive:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -1461,6 +1478,10 @@
   }
 
   .note-card__classify {
+    opacity: 1;
+  }
+
+  .note-card__archive {
     opacity: 1;
   }
 
