@@ -407,6 +407,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
   const queryClient = useQueryClient();
 
   const itemsQuery = useQuery({
@@ -424,8 +425,9 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
 
   const deleteItemMutation = useMutation({
     mutationFn: deleteItem,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items"] });
+    onSuccess: async () => {
+      setDeleteTarget(null);
+      await queryClient.invalidateQueries({ queryKey: ["items"] });
     },
   });
 
@@ -461,6 +463,21 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
   }, [isSidebarOpen]);
+
+  useEffect(() => {
+    if (!deleteTarget) {
+      return;
+    }
+
+    const handleDeleteEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape" && !deleteItemMutation.isPending) {
+        setDeleteTarget(null);
+      }
+    };
+
+    document.addEventListener("keydown", handleDeleteEscape);
+    return () => document.removeEventListener("keydown", handleDeleteEscape);
+  }, [deleteItemMutation.isPending, deleteTarget]);
 
   const inboxCount = itemsQuery.isSuccess ? itemsQuery.data.length : null;
   const activeNavigationItem =
@@ -513,6 +530,25 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       id: editingItemId,
       body: trimmedBody,
     });
+  };
+
+  const openDeleteConfirmation = (item: Item) => {
+    deleteItemMutation.reset();
+    setDeleteTarget(item);
+  };
+
+  const closeDeleteConfirmation = () => {
+    if (!deleteItemMutation.isPending) {
+      setDeleteTarget(null);
+    }
+  };
+
+  const confirmDelete = () => {
+    if (!deleteTarget || deleteItemMutation.isPending) {
+      return;
+    }
+
+    deleteItemMutation.mutate(deleteTarget.id);
   };
 
   const renderInbox = () => (
@@ -721,7 +757,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
                 type="button"
                 aria-label="메모 삭제"
                 disabled={deleteItemMutation.isPending}
-                onClick={() => deleteItemMutation.mutate(item.id)}
+                onClick={() => openDeleteConfirmation(item)}
               >
                 <Icon name="delete" size={16} />
               </button>
@@ -758,7 +794,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   );
 
   return (
-    <div className="app-shell">
+    <>
+      <div className="app-shell">
       <button
         type="button"
         className={`sidebar-overlay${isSidebarOpen ? " is-visible" : ""}`}
@@ -858,7 +895,50 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
           {activeView === "inbox" ? renderInbox() : renderPlaceholder()}
         </main>
       </div>
-    </div>
+      </div>
+      {deleteTarget && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={closeDeleteConfirmation}
+        >
+          <section
+            className="confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-confirm-title"
+            aria-describedby="delete-confirm-description"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="confirm-modal__icon" aria-hidden="true">
+              <Icon name="delete" size={20} />
+            </div>
+            <h2 id="delete-confirm-title">이 메모를 삭제할까요?</h2>
+            <p id="delete-confirm-description">
+              삭제된 메모는 휴지통으로 이동합니다.
+            </p>
+            <div className="confirm-modal__actions">
+              <button
+                className="confirm-modal__cancel"
+                type="button"
+                onClick={closeDeleteConfirmation}
+                disabled={deleteItemMutation.isPending}
+              >
+                취소
+              </button>
+              <button
+                className="confirm-modal__delete"
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleteItemMutation.isPending}
+              >
+                {deleteItemMutation.isPending ? "삭제 중..." : "삭제"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </>
   );
 }
 

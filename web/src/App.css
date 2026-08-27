@@ -1119,6 +1119,93 @@
   background: #e5eaff;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(29, 29, 25, 0.36);
+}
+
+.confirm-modal {
+  width: min(100%, 360px);
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+}
+
+.confirm-modal__icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 16px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: 10px;
+}
+
+.confirm-modal h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 720;
+  letter-spacing: -0.02em;
+}
+
+.confirm-modal p {
+  margin: 7px 0 22px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.confirm-modal__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.confirm-modal__cancel,
+.confirm-modal__delete {
+  min-height: 36px;
+  padding: 8px 14px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 8px;
+}
+
+.confirm-modal__cancel {
+  color: var(--text-soft);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+}
+
+.confirm-modal__cancel:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.confirm-modal__delete {
+  color: #ffffff;
+  background: var(--danger);
+  border: 1px solid var(--danger);
+}
+
+.confirm-modal__delete:hover:not(:disabled) {
+  background: #963333;
+  border-color: #963333;
+}
+
+.confirm-modal__cancel:disabled,
+.confirm-modal__delete:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 @media (max-width: 1080px) {
   .workspace__content {
     padding-right: 42px;
