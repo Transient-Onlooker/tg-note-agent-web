@@ -30,6 +30,7 @@ import { navigationGroups, type ViewId } from "./config/navigation";
 import { Icon } from "./components/Icon";
 import { LockedScreen } from "./components/LockedScreen";
 import { PlaceholderView } from "./views/PlaceholderView";
+import { TrashView } from "./views/TrashView";
 import { formatCreatedAt } from "./utils/date";
 import "./App.css";
 
@@ -513,104 +514,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     </section>
   );
 
-  const renderTrash = () => (
-    <section className="trash-view" aria-labelledby="trash-title">
-      <header className="view-header">
-        <div>
-          <p className="eyebrow">Library</p>
-          <div className="view-title-row">
-            <h1 id="trash-title">Trash</h1>
-            {trashQuery.isSuccess && (
-              <span className="count-pill">{trashQuery.data.length}</span>
-            )}
-          </div>
-          <p className="view-description">
-            삭제한 메모를 확인하고 복원할 수 있습니다.
-          </p>
-        </div>
-      </header>
-
-      {restoreError && (
-        <p className="inline-error delete-error" role="alert">
-          {restoreError}
-        </p>
-      )}
-
-      <div className="note-list" aria-live="polite">
-        {trashQuery.isPending && (
-          <div className="loading-list" aria-label="휴지통을 불러오는 중">
-            {[0, 1, 2].map((item) => (
-              <div className="note-skeleton" key={item}>
-                <span className="skeleton-icon" />
-                <div>
-                  <span className="skeleton-line skeleton-line--wide" />
-                  <span className="skeleton-line skeleton-line--short" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {trashQuery.isError && (
-          <div className="state-panel state-panel--error" role="alert">
-            <span className="state-panel__icon">
-              <Icon name="refresh" size={22} />
-            </span>
-            <div>
-              <h3>휴지통을 불러오지 못했습니다.</h3>
-              <p>잠시 후 다시 시도해 주세요.</p>
-            </div>
-            <button type="button" onClick={() => trashQuery.refetch()}>
-              다시 시도
-            </button>
-          </div>
-        )}
-
-        {trashQuery.isSuccess && trashQuery.data.length === 0 && (
-          <div className="state-panel state-panel--empty">
-            <span className="state-panel__icon">
-              <Icon name="trash" size={24} />
-            </span>
-            <div>
-              <h3>휴지통이 비어 있습니다.</h3>
-              <p>삭제한 메모가 이곳에 표시됩니다.</p>
-            </div>
-          </div>
-        )}
-
-        {trashQuery.isSuccess &&
-          trashQuery.data.map((item) => (
-            <article className="note-card trash-card" key={item.id}>
-              <span className="note-card__marker" aria-hidden="true">
-                <Icon name="trash" size={18} />
-              </span>
-              <div className="note-card__content">
-                <p className="note-card__body">{item.body}</p>
-                <div className="note-card__meta">
-                  <span className="kind-badge">{item.kind}</span>
-                  <span className="meta-separator" aria-hidden="true" />
-                  <time dateTime={item.deleted_at ?? item.updated_at}>
-                    {formatCreatedAt(item.deleted_at ?? item.updated_at)}
-                  </time>
-                </div>
-              </div>
-              <button
-                className="trash-card__restore"
-                type="button"
-                onClick={() => {
-                  setRestoreError(null);
-                  restoreItemMutation.mutate(item.id);
-                }}
-                disabled={restoreItemMutation.isPending}
-              >
-                {restoreItemMutation.isPending ? "복원 중..." : "복원"}
-              </button>
-            </article>
-          ))}
-      </div>
-    </section>
-  );
-
   return (
     <>
       <div className="app-shell">
@@ -718,7 +621,21 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             {activeView === "inbox"
               ? renderInbox()
               : activeView === "trash"
-                ? renderTrash()
+                ? <TrashView
+                    items={trashQuery.data ?? []}
+                    isPending={trashQuery.isPending}
+                    isError={trashQuery.isError}
+                    isSuccess={trashQuery.isSuccess}
+                    restoreError={restoreError}
+                    isRestoring={restoreItemMutation.isPending}
+                    onRetry={() => {
+                      void trashQuery.refetch();
+                    }}
+                    onRestore={(id) => {
+                      setRestoreError(null);
+                      restoreItemMutation.mutate(id);
+                    }}
+                  />
                 : <PlaceholderView
                     item={activeNavigationItem}
                     onGoInbox={() => handleNavigation("inbox")}
