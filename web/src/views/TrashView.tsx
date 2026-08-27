@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Item } from "../api/items";
 import { Icon } from "../components/Icon";
 import { formatCreatedAt } from "../utils/date";
@@ -8,9 +9,8 @@ type TrashViewProps = {
   isError: boolean;
   isSuccess: boolean;
   restoreError: string | null;
-  isRestoring: boolean;
   onRetry: () => void;
-  onRestore: (id: string) => void;
+  onRestore: (id: string) => Promise<unknown>;
 };
 export function TrashView({
   items,
@@ -18,10 +18,20 @@ export function TrashView({
   isError,
   isSuccess,
   restoreError,
-  isRestoring,
   onRetry,
   onRestore,
 }: TrashViewProps) {
+  const [restoringItemId, setRestoringItemId] = useState<string | null>(null);
+
+  const restore = async (id: string) => {
+    setRestoringItemId(id);
+    try {
+      await onRestore(id);
+    } finally {
+      setRestoringItemId(null);
+    }
+  };
+
   return (
     <section className="trash-view" aria-labelledby="trash-title">
       <header className="view-header">
@@ -106,10 +116,10 @@ export function TrashView({
               <button
                 className="trash-card__restore"
                 type="button"
-                onClick={() => onRestore(item.id)}
-                disabled={isRestoring}
+                onClick={() => void restore(item.id)}
+                disabled={restoringItemId === item.id}
               >
-                {isRestoring ? "복원 중..." : "복원"}
+                {restoringItemId === item.id ? "복원 중..." : "복원"}
               </button>
             </article>
           ))}

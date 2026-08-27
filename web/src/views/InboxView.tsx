@@ -1,5 +1,6 @@
-import type { FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import type { Item } from "../api/items";
+import { CardActionButton } from "../components/CardActionButton";
 import { Icon } from "../components/Icon";
 import { formatCreatedAt } from "../utils/date";
 
@@ -17,17 +18,11 @@ type InboxViewProps = {
   createError: boolean;
 
   deleteError: boolean;
-  isDeleting: boolean;
 
   editingItemId: string | null;
   editDraft: string;
   editError: string | null;
   isUpdating: boolean;
-  isClassifying: boolean;
-  isArchiving: boolean;
-  isPurchasing: boolean;
-  isSendingToPrintQueue: boolean;
-  isSettingToday: boolean;
 
   onDraftChange: (value: string) => void;
   onCreate: () => void;
@@ -37,11 +32,11 @@ type InboxViewProps = {
   onEditDraftChange: (value: string) => void;
   onCancelEditing: () => void;
   onSaveEditing: () => void;
-  onClassify: (item: Item) => void;
-  onArchive: (item: Item) => void;
-  onPurchase: (item: Item) => void;
-  onSendToPrintQueue: (item: Item) => void;
-  onSetToday: (item: Item) => void;
+  onClassify: (item: Item) => Promise<unknown>;
+  onArchive: (item: Item) => Promise<unknown>;
+  onPurchase: (item: Item) => Promise<unknown>;
+  onSendToPrintQueue: (item: Item) => Promise<unknown>;
+  onSetToday: (item: Item) => Promise<unknown>;
 
   onDeleteRequest: (item: Item) => void;
 };
@@ -57,16 +52,10 @@ export function InboxView({
   isCreating,
   createError,
   deleteError,
-  isDeleting,
   editingItemId,
   editDraft,
   editError,
   isUpdating,
-  isClassifying,
-  isArchiving,
-  isPurchasing,
-  isSendingToPrintQueue,
-  isSettingToday,
   onDraftChange,
   onCreate,
   onRetry,
@@ -81,6 +70,8 @@ export function InboxView({
   onSetToday,
   onDeleteRequest,
 }: InboxViewProps) {
+  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onCreate();
@@ -284,86 +275,86 @@ export function InboxView({
                 )}
               </div>
 
-              {editingItemId !== item.id && (
+              <div className={`note-card__actions${openActionMenuId === item.id ? " is-open" : ""}`}>
                 <button
-                  className="note-card__edit"
+                  className="note-card__menu-toggle"
                   type="button"
+                  aria-label="메모 작업 메뉴"
+                  aria-expanded={openActionMenuId === item.id}
+                  onClick={() => setOpenActionMenuId((current) => current === item.id ? null : item.id)}
+                >
+                  <Icon name="menu" size={18} />
+                </button>
+                <div className="note-card__action-menu" onClickCapture={() => setOpenActionMenuId(null)}>
+              {editingItemId !== item.id && (
+                <CardActionButton
+                  className="note-card__edit"
                   aria-label="메모 수정"
                   onClick={() => onStartEditing(item)}
                 >
                   <Icon name="edit" size={16} />
-                </button>
+                </CardActionButton>
               )}
 
               {editingItemId !== item.id && (
-                <button
+                <CardActionButton
                   className="note-card__classify"
-                  type="button"
                   aria-label="Notes로 이동"
-                  disabled={isClassifying}
                   onClick={() => onClassify(item)}
                 >
                   <Icon name="notes" size={16} />
-                </button>
+                </CardActionButton>
               )}
 
               {editingItemId !== item.id && (
-                <button
+                <CardActionButton
                   className="note-card__archive"
-                  type="button"
                   aria-label="Archive로 이동"
-                  disabled={isArchiving}
                   onClick={() => onArchive(item)}
                 >
                   <Icon name="archive" size={16} />
-                </button>
+                </CardActionButton>
               )}
 
               {editingItemId !== item.id && (
-                <button
+                <CardActionButton
                   className="note-card__purchase"
-                  type="button"
                   aria-label="Purchase로 이동"
-                  disabled={isPurchasing}
                   onClick={() => onPurchase(item)}
                 >
                   <Icon name="purchase" size={16} />
-                </button>
+                </CardActionButton>
               )}
 
               {editingItemId !== item.id && (
-                <button
+                <CardActionButton
                   className="note-card__print-queue"
-                  type="button"
                   aria-label="Print Queue로 이동"
-                  disabled={isSendingToPrintQueue}
                   onClick={() => onSendToPrintQueue(item)}
                 >
                   <Icon name="print-queue" size={16} />
-                </button>
+                </CardActionButton>
               )}
 
               {editingItemId !== item.id && (
-                <button
+                <CardActionButton
                   className="note-card__today"
-                  type="button"
                   aria-label="오늘로 지정"
-                  disabled={isSettingToday}
                   onClick={() => onSetToday(item)}
                 >
                   <Icon name="today" size={16} />
-                </button>
+                </CardActionButton>
               )}
 
-              <button
+              <CardActionButton
                 className="note-card__delete"
-                type="button"
                 aria-label="메모 삭제"
-                disabled={isDeleting}
                 onClick={() => onDeleteRequest(item)}
               >
                 <Icon name="delete" size={16} />
-              </button>
+              </CardActionButton>
+                </div>
+              </div>
             </article>
           ))}
       </div>

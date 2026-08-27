@@ -44,6 +44,7 @@ import { getTodayRange } from "./utils/date";
 import "./App.css";
 
 type AuthStatus = "checking" | "locked" | "authenticated";
+type ActionFeedback = { message: string; tone: "success" | "error" };
 
 
 function App() {
@@ -142,8 +143,19 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const [editError, setEditError] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
   const queryClient = useQueryClient();
   useRealtimeSync(queryClient);
+
+  const showActionFeedback = (message: string, tone: ActionFeedback["tone"] = "success") => {
+    setActionFeedback({ message, tone });
+  };
+
+  useEffect(() => {
+    if (!actionFeedback) return;
+    const timeoutId = window.setTimeout(() => setActionFeedback(null), 2400);
+    return () => window.clearTimeout(timeoutId);
+  }, [actionFeedback]);
 
   const todayRange = getTodayRange();
   const inboxFilters = { kind: "inbox" as const, status: "active" as const };
@@ -207,7 +219,9 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     onSuccess: async () => {
       setDraft("");
       await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      showActionFeedback("Inbox에 메모를 추가했습니다.");
     },
+    onError: () => showActionFeedback("메모를 추가하지 못했습니다.", "error"),
   });
 
   const deleteItemMutation = useMutation({
@@ -216,14 +230,18 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       setDeleteTarget(null);
       await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
       await queryClient.invalidateQueries({ queryKey: ["trash"] });
+      showActionFeedback("메모를 삭제했습니다.");
     },
+    onError: () => showActionFeedback("메모를 삭제하지 못했습니다.", "error"),
   });
 
   const createPrintJobMutation = useMutation({
     mutationFn: createPrintJob,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      showActionFeedback("Print Queue에 작업을 추가했습니다.");
     },
+    onError: () => showActionFeedback("작업을 추가하지 못했습니다.", "error"),
   });
 
   const updateItemMutation = useMutation({
@@ -241,16 +259,18 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       setEditingItemId(null);
       setEditDraft("");
       setEditError(null);
+      showActionFeedback("수정했습니다.");
     },
     onError: () => {
       setEditError("수정하지 못했습니다.");
+      showActionFeedback("수정하지 못했습니다.", "error");
     },
   });
 
   const updateDueMutation = useMutation({
     mutationFn: ({ id, dueAt }: { id: string; dueAt: string | null }) =>
       updateItemFields(id, { due_at: dueAt }),
-    onSuccess: async (updatedItem: Item) => {
+    onSuccess: async (updatedItem: Item, variables) => {
       queryClient.setQueriesData<Item[]>(
         { queryKey: itemQueryKeys.all },
         (items) =>
@@ -276,13 +296,17 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             : items?.filter((item) => item.id !== updatedItem.id),
       );
       await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      showActionFeedback(
+        variables.dueAt ? "Today에 추가했습니다." : "기한을 제거했습니다.",
+      );
     },
+    onError: () => showActionFeedback("기한을 변경하지 못했습니다.", "error"),
   });
 
   const classifyItemMutation = useMutation({
     mutationFn: ({ id, kind }: { id: string; kind: "inbox" | "note" | "purchase" | "print_job" }) =>
       updateItemFields(id, { kind }),
-    onSuccess: async (updatedItem: Item) => {
+    onSuccess: async (updatedItem: Item, variables) => {
       queryClient.setQueryData<Item[]>(
         itemQueryKeys.list(inboxFilters),
         (items) =>
@@ -324,7 +348,15 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             : items?.filter((item) => item.id !== updatedItem.id),
       );
       await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      const labels = {
+        inbox: "Inbox",
+        note: "Notes",
+        purchase: "Purchase",
+        print_job: "Print Queue",
+      } as const;
+      showActionFeedback(`${labels[variables.kind]}로 이동했습니다.`);
     },
+    onError: () => showActionFeedback("이동하지 못했습니다.", "error"),
   });
 
   const syncStatusItemCache = (updatedItem: Item) => {
@@ -372,7 +404,9 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     onSuccess: async (updatedItem: Item) => {
       syncStatusItemCache(updatedItem);
       await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      showActionFeedback("Archive로 이동했습니다.");
     },
+    onError: () => showActionFeedback("Archive로 이동하지 못했습니다.", "error"),
   });
 
   const restoreArchivedItemMutation = useMutation({
@@ -381,7 +415,9 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     onSuccess: async (updatedItem: Item) => {
       syncStatusItemCache(updatedItem);
       await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      showActionFeedback("활성 메모로 복원했습니다.");
     },
+    onError: () => showActionFeedback("복원하지 못했습니다.", "error"),
   });
 
   const restoreItemMutation = useMutation({
@@ -393,9 +429,11 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       setRestoreError(null);
       await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
       await queryClient.invalidateQueries({ queryKey: ["trash"] });
+      showActionFeedback("휴지통에서 복원했습니다.");
     },
     onError: () => {
       setRestoreError("복원하지 못했습니다.");
+      showActionFeedback("복원하지 못했습니다.", "error");
     },
   });
 
@@ -501,29 +539,14 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     deleteItemMutation.mutate(deleteTarget.id);
   };
 
-  const classifyItem = (item: Item, kind: "inbox" | "note" | "purchase" | "print_job") => {
-    if (classifyItemMutation.isPending) {
-      return;
-    }
+  const classifyItem = (item: Item, kind: "inbox" | "note" | "purchase" | "print_job") =>
+    classifyItemMutation.mutateAsync({ id: item.id, kind });
 
-    classifyItemMutation.mutate({ id: item.id, kind });
-  };
+  const setItemDueToday = (item: Item) =>
+    updateDueMutation.mutateAsync({ id: item.id, dueAt: todayRange.dueFrom });
 
-  const setItemDueToday = (item: Item) => {
-    if (updateDueMutation.isPending) {
-      return;
-    }
-
-    updateDueMutation.mutate({ id: item.id, dueAt: todayRange.dueFrom });
-  };
-
-  const clearItemDue = (item: Item) => {
-    if (updateDueMutation.isPending) {
-      return;
-    }
-
-    updateDueMutation.mutate({ id: item.id, dueAt: null });
-  };
+  const clearItemDue = (item: Item) =>
+    updateDueMutation.mutateAsync({ id: item.id, dueAt: null });
 
   return (
     <>
@@ -553,16 +576,10 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isCreating={createItemMutation.isPending}
             createError={createItemMutation.isError}
             deleteError={deleteItemMutation.isError}
-            isDeleting={deleteItemMutation.isPending}
             editingItemId={editingItemId}
             editDraft={editDraft}
             editError={editError}
             isUpdating={updateItemMutation.isPending}
-            isClassifying={classifyItemMutation.isPending}
-            isArchiving={archiveItemMutation.isPending}
-            isPurchasing={classifyItemMutation.isPending}
-            isSendingToPrintQueue={classifyItemMutation.isPending}
-            isSettingToday={updateDueMutation.isPending}
             onDraftChange={(value) => {
               setDraft(value);
 
@@ -585,7 +602,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
             onClassify={(item) => classifyItem(item, "note")}
-            onArchive={(item) => archiveItemMutation.mutate(item.id)}
+            onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
             onSetToday={setItemDueToday}
@@ -603,12 +620,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             editDraft={editDraft}
             editError={editError}
             isUpdating={updateItemMutation.isPending}
-            isDeleting={deleteItemMutation.isPending}
-            isMovingToInbox={classifyItemMutation.isPending}
-            isArchiving={archiveItemMutation.isPending}
-            isPurchasing={classifyItemMutation.isPending}
-            isSendingToPrintQueue={classifyItemMutation.isPending}
-            isSettingToday={updateDueMutation.isPending}
             deleteError={deleteItemMutation.isError}
             onRetry={() => {
               void notesQuery.refetch();
@@ -624,7 +635,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
-            onArchive={(item) => archiveItemMutation.mutate(item.id)}
+            onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
             onSetToday={setItemDueToday}
@@ -642,10 +653,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             editDraft={editDraft}
             editError={editError}
             isUpdating={updateItemMutation.isPending}
-            isDeleting={deleteItemMutation.isPending}
-            isMovingToInbox={classifyItemMutation.isPending}
-            isArchiving={archiveItemMutation.isPending}
-            isClearingDue={updateDueMutation.isPending}
             deleteError={deleteItemMutation.isError}
             onRetry={() => {
               void todayQuery.refetch();
@@ -661,7 +668,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
             onClearDue={clearItemDue}
-            onArchive={(item) => archiveItemMutation.mutate(item.id)}
+            onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "purchase" ? (
@@ -676,9 +683,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             editDraft={editDraft}
             editError={editError}
             isUpdating={updateItemMutation.isPending}
-            isDeleting={deleteItemMutation.isPending}
-            isMovingToInbox={classifyItemMutation.isPending}
-            isArchiving={archiveItemMutation.isPending}
             deleteError={deleteItemMutation.isError}
             onRetry={() => {
               void purchaseQuery.refetch();
@@ -694,7 +698,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
-            onArchive={(item) => archiveItemMutation.mutate(item.id)}
+            onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "print-queue" ? (
@@ -703,11 +707,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isPending={printQueueQuery.isPending}
             isError={printQueueQuery.isError}
             isFetching={printQueueQuery.isFetching}
-            isUpdating={updateItemMutation.isPending}
             isCreating={createPrintJobMutation.isPending}
-            isDeleting={deleteItemMutation.isPending}
-            isMovingToInbox={classifyItemMutation.isPending}
-            isArchiving={archiveItemMutation.isPending}
             deleteError={deleteItemMutation.isError}
             onRetry={() => {
               void printQueueQuery.refetch();
@@ -715,7 +715,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onUpdateItem={(id, input) => updateItemMutation.mutateAsync({ id, input })}
             onCreate={() => createPrintJobMutation.mutate()}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
-            onArchive={(item) => archiveItemMutation.mutate(item.id)}
+            onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "archive" ? (
@@ -730,8 +730,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             editDraft={editDraft}
             editError={editError}
             isUpdating={updateItemMutation.isPending}
-            isDeleting={deleteItemMutation.isPending}
-            isRestoring={restoreArchivedItemMutation.isPending}
             deleteError={deleteItemMutation.isError}
             onRetry={() => {
               void archiveQuery.refetch();
@@ -746,7 +744,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             }}
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
-            onRestore={(item) => restoreArchivedItemMutation.mutate(item.id)}
+            onRestore={(item) => restoreArchivedItemMutation.mutateAsync(item.id)}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "trash" ? (
@@ -756,13 +754,12 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isError={trashQuery.isError}
             isSuccess={trashQuery.isSuccess}
             restoreError={restoreError}
-            isRestoring={restoreItemMutation.isPending}
             onRetry={() => {
               void trashQuery.refetch();
             }}
             onRestore={(id) => {
               setRestoreError(null);
-              restoreItemMutation.mutate(id);
+              return restoreItemMutation.mutateAsync(id);
             }}
           />
         ) : (
@@ -772,6 +769,11 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
           />
         )}
       </AppShell>
+      {actionFeedback && (
+        <div className={`action-feedback action-feedback--${actionFeedback.tone}`} role="status">
+          {actionFeedback.message}
+        </div>
+      )}
       {deleteTarget && (
         <DeleteConfirmModal
           isPending={deleteItemMutation.isPending}

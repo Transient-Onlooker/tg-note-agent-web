@@ -1,4 +1,6 @@
+import { useState } from "react";
 import type { Item } from "../api/items";
+import { CardActionButton } from "../components/CardActionButton";
 import { Icon } from "../components/Icon";
 import { formatCreatedAt } from "../utils/date";
 
@@ -13,15 +15,13 @@ type ArchiveViewProps = {
   editDraft: string;
   editError: string | null;
   isUpdating: boolean;
-  isDeleting: boolean;
-  isRestoring: boolean;
   deleteError: boolean;
   onRetry: () => void;
   onStartEditing: (item: Item) => void;
   onEditDraftChange: (value: string) => void;
   onCancelEditing: () => void;
   onSaveEditing: () => void;
-  onRestore: (item: Item) => void;
+  onRestore: (item: Item) => Promise<unknown>;
   onDeleteRequest: (item: Item) => void;
 };
 
@@ -36,8 +36,6 @@ export function ArchiveView({
   editDraft,
   editError,
   isUpdating,
-  isDeleting,
-  isRestoring,
   deleteError,
   onRetry,
   onStartEditing,
@@ -47,6 +45,8 @@ export function ArchiveView({
   onRestore,
   onDeleteRequest,
 }: ArchiveViewProps) {
+  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+
   return (
     <section className="archive-view" aria-labelledby="archive-title">
       <header className="view-header">
@@ -186,36 +186,44 @@ export function ArchiveView({
                   </>
                 )}
               </div>
+              <div className={`note-card__actions${openActionMenuId === item.id ? " is-open" : ""}`}>
+                <button
+                  className="note-card__menu-toggle"
+                  type="button"
+                  aria-label="메모 작업 메뉴"
+                  aria-expanded={openActionMenuId === item.id}
+                  onClick={() => setOpenActionMenuId((current) => current === item.id ? null : item.id)}
+                >
+                  <Icon name="menu" size={18} />
+                </button>
+                <div className="note-card__action-menu" onClickCapture={() => setOpenActionMenuId(null)}>
               {editingItemId !== item.id && (
                 <>
-                  <button
+                  <CardActionButton
                     className="note-card__edit"
-                    type="button"
                     aria-label="메모 수정"
                     onClick={() => onStartEditing(item)}
                   >
                     <Icon name="edit" size={16} />
-                  </button>
-                  <button
+                  </CardActionButton>
+                  <CardActionButton
                     className="note-card__classify"
-                    type="button"
                     aria-label="활성 메모로 복원"
-                    disabled={isRestoring}
                     onClick={() => onRestore(item)}
                   >
                     <Icon name="inbox" size={16} />
-                  </button>
+                  </CardActionButton>
                 </>
               )}
-              <button
+              <CardActionButton
                 className="note-card__delete"
-                type="button"
                 aria-label="메모 삭제"
-                disabled={isDeleting}
                 onClick={() => onDeleteRequest(item)}
               >
                 <Icon name="delete" size={16} />
-              </button>
+              </CardActionButton>
+                </div>
+              </div>
             </article>
           ))}
       </div>
