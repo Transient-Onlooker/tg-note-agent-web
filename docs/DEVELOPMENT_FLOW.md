@@ -2,156 +2,136 @@
 
 > Repository: `Transient-Onlooker/tg-note-agent-web`
 >
-> Telegram으로 빠르게 Capture하고,
-> Web에서 정리·관리하며,
-> 이후 검색·프로젝트·자동화·AI까지 확장하는
-> 개인용 Capture & Notes 시스템의 개발 지도.
->
-> 이 문서는 특정 버전만을 위한 계획이 아니라
-> NoteRelay 전체 생명주기를 추적한다.
+> 이 문서는 NoteRelay의 실제 구현 상태, `main` 중심 개발 이력, 검증 및 릴리스 흐름을 기록한다.
+> 문서보다 현재 코드와 Git 상태가 우선한다.
 
 ---
 
-# 1. Product Evolution
+## 1. Product Evolution
+
+버전 진화는 시간 순서를 표현하는 `timeline`으로 관리한다.
+
+```mermaid
+timeline
+    title NoteRelay Version Evolution
+    V0 : Capture foundation
+       : Telegram and Web capture
+       : D1 persistence and Inbox CRUD
+       : Authentication and realtime sync
+    V1 : Personal workspace
+       : Notes and Today
+       : Archive
+       : Purchase and Print Queue
+       : Projects and Search remain planned
+    V2 : Structured knowledge
+       : Tasks and richer due-date workflows
+       : Tags, attachments, and revisions
+    V3 : Optional intelligence
+       : OCR and assisted classification
+       : Semantic search and summarization
+```
+
+버전 경계는 실제 사용 경험과 우선순위에 따라 조정할 수 있다.
+
+---
+
+## 2. Current V1 Status
+
+상태 전이는 구현 완료, 현재 진행, 예정의 경계를 명확히 표현한다.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Implemented
+    Implemented --> InProgress: next scoped feature starts
+    InProgress --> Implemented: verified and pushed to main
+    Implemented --> Planned: select future scope
+    Planned --> InProgress: scope approved
+```
+
+| 상태 | 기능 | 근거 |
+|---|---|---|
+| 구현 완료 | Notes | `a899e20 Implement Notes sidebar workflow` |
+| 구현 완료 | Archive | `dee5b82 Implement Archive sidebar workflow` |
+| 구현 완료 | Purchase | `5a1c857 Implement Purchase sidebar workflow` |
+| 구현 완료 | Print Queue | `ac892d7 Implement Print Queue sidebar workflow` |
+| 구현 완료 | Today | `9d814f2 Implement Today sidebar workflow` |
+| 진행 중 | 없음 | 현재 working tree 기준 |
+| 예정 | Projects, Search | 아직 실제 View 구현 없음 |
+
+현재 V1의 공통 기반:
+
+- `listItems(filters)` 기반 filtered query
+- `updateItemFields(id, input)` 기반 Item 분류 및 상태 변경
+- 안정적인 `itemQueryKeys` prefix와 TanStack Query invalidation
+- WebSocket 변경 알림 후 D1 REST API 재조회
+- 공통 edit, soft delete, Trash/Restore, Archive 동작
+
+---
+
+## 3. Current Architecture
+
+컴포넌트와 데이터 경로를 표현하므로 `flowchart`를 유지한다.
 
 ```mermaid
 flowchart LR
-    IDEA[Initial Idea]
-
-    V0[V0<br/>Capture Foundation]
-    V1[V1<br/>Usable Personal Workspace]
-    V2[V2<br/>Structured Knowledge & Tasks]
-    V3[V3<br/>Automation & Intelligence]
-    FUTURE[Future<br/>Personal Knowledge Agent]
-
-    IDEA --> V0
-    V0 --> V1
-    V1 --> V2
-    V2 --> V3
-    V3 --> FUTURE
-```
-
----
-
-# 2. Version Overview
-
-```mermaid
-flowchart TB
-
-    subgraph V0["V0 — Capture Foundation"]
-        V0A[Telegram Capture]
-        V0B[Web Quick Capture]
-        V0C[D1 Persistence]
-        V0D[Inbox]
-        V0E[Edit]
-        V0F[Soft Delete]
-        V0G[Trash / Restore]
-        V0H[Access Key Authentication]
-        V0I[Realtime Sync]
-        V0J[Production Deployment]
-    end
-
-    subgraph V1["V1 — Personal Workspace"]
-        V1A[Stable Inbox Workflow]
-        V1B[Today View]
-        V1C[Projects]
-        V1D[Search]
-        V1E[Improved Navigation]
-        V1F[Error / Empty / Loading UX]
-        V1G[Reliability Hardening]
-    end
-
-    subgraph V2["V2 — Structured Knowledge"]
-        V2A[Tasks]
-        V2B[Due Dates]
-        V2C[Tags]
-        V2D[Attachments]
-        V2E[Revision History]
-        V2F[Advanced Filtering]
-    end
-
-    subgraph V3["V3 — Automation & Intelligence"]
-        V3A[OCR]
-        V3B[AI Classification]
-        V3C[AI Search]
-        V3D[Summarization]
-        V3E[Automation]
-        V3F[Specialized Queues]
-    end
-
-    V0 --> V1
-    V1 --> V2
-    V2 --> V3
-```
-
-> V1 이후의 버전 경계는 고정된 계약이 아니다.
-> 실제 사용 경험과 우선순위에 따라 기능은 앞뒤 버전으로 이동할 수 있다.
-
----
-
-# 3. Current Architecture
-
-```mermaid
-flowchart LR
-
     USER[User]
+    TG[Telegram]
+    WEB[GitHub Pages Web]
+    WORKER[Cloudflare Worker]
+    DB[(Cloudflare D1)]
+    HUB[RealtimeHub Durable Object]
+    API[Telegram Bot API]
 
-    USER --> TG[Telegram]
-    USER --> WEB[Web Workspace]
-
-    TG -->|Webhook| WORKER[Cloudflare Worker]
-    WEB -->|REST API| WORKER
-
-    WORKER --> D1[(Cloudflare D1)]
-
-    WORKER -->|Mutation event| RT[RealtimeHub<br/>Durable Object]
-
-    WEB <-->|Authenticated WebSocket| RT
-
-    WORKER -->|Reaction| TELEGRAM_API[Telegram Bot API]
+    USER --> TG
+    USER --> WEB
+    TG -->|Webhook| WORKER
+    WEB -->|Authenticated REST| WORKER
+    WORKER --> DB
+    WORKER -->|Best-effort mutation event| HUB
+    HUB -->|Authenticated WebSocket notification| WEB
+    WORKER -->|Reaction| API
 ```
+
+운영 원칙:
+
+- D1이 데이터의 single source of truth다.
+- WebSocket은 변경 알림만 전송하고 전체 Item 상태를 전달하지 않는다.
+- Realtime 장애가 성공한 D1 mutation을 실패로 바꾸지 않는다.
+- Telegram과 Web API는 서로 다른 인증 경로를 유지한다.
 
 ---
 
-# 4. Core Data Model
-
-NoteRelay는 원본 입력과 사용자가 관리하는 데이터를 분리한다.
+## 4. Core Data Model
 
 ```mermaid
 flowchart TD
-
-    INPUT[Telegram / Web Input]
-
-    CAPTURE[Capture<br/>Immutable-ish Original]
-    ITEM[Item<br/>Managed Workspace Record]
+    INPUT[Telegram or Web input]
+    CAPTURE[Capture: preserved original]
+    ITEM[Item: editable workspace record]
+    ACTIVE[Active filtered views]
+    ARCHIVE[Archive]
+    TRASH[Trash]
 
     INPUT --> CAPTURE
     CAPTURE --> ITEM
-
-    ITEM --> EDIT[Edit]
-    ITEM --> PROJECT[Project]
-    ITEM --> TAG[Tags]
-    ITEM --> TASK[Task Metadata]
-
-    ITEM -->|Soft Delete| TRASH[Trash]
-
-    TRASH -->|Restore| ITEM
-
-    CAPTURE --> ORIGINAL[Original Input Preserved]
+    ITEM --> ACTIVE
+    ACTIVE -->|status archived| ARCHIVE
+    ARCHIVE -->|status active| ACTIVE
+    ITEM -->|soft delete| TRASH
+    TRASH -->|restore| ITEM
 ```
 
-핵심 원칙:
-
-- Capture는 입력 원본을 보존한다.
-- Item은 사용자가 정리하고 수정하는 작업 대상이다.
-- Item 삭제는 기본적으로 soft delete다.
-- 기능 확장 시에도 원본 Capture 보존 원칙을 유지한다.
+- Capture 원본은 보존한다.
+- Item은 body, kind, status, due date 등 관리 가능한 상태를 가진다.
+- Notes, Purchase, Print Queue는 `kind` filtered view다.
+- Today는 로컬 날짜 범위의 `due_at` filtered view다.
+- Archive는 `status = archived`, Trash는 `deleted_at IS NOT NULL`로 구분한다.
 
 ---
 
-# 5. Data Flow
+## 5. Capture and Mutation Data Flow
 
-## Telegram Capture
+### Telegram Capture
 
 ```mermaid
 sequenceDiagram
@@ -164,24 +144,21 @@ sequenceDiagram
 
     U->>TG: Send message
     TG->>W: Webhook
-
-    W->>W: Validate webhook secret
-    W->>W: Validate allowed user
+    W->>W: Validate webhook secret and allowed user
     W->>DB: Check duplicate message
 
     alt New capture
-        W->>DB: Create Capture
-        W->>DB: Create Item
+        W->>DB: Create Capture and Item
         W->>RT: Broadcast item_created
-        RT-->>WEB: Realtime event
-        WEB->>W: Refetch items
-        W->>TG: Reaction
-    else Duplicate
-        W-->>TG: Ignore duplicate persistence
+        RT-->>WEB: Change notification
+        WEB->>W: Refetch affected item queries
+        W->>TG: Add success reaction
+    else Duplicate update
+        W-->>TG: Skip persistence and broadcast
     end
 ```
 
-## Web Mutation
+### Web Mutation
 
 ```mermaid
 sequenceDiagram
@@ -190,470 +167,174 @@ sequenceDiagram
     participant DB as D1
     participant RT as RealtimeHub
 
-    WEB->>W: Create / Edit / Delete / Restore
-    W->>W: Validate access key
+    WEB->>W: Create, update, delete, or restore
+    W->>W: Validate bearer access key
     W->>DB: Persist mutation
-    DB-->>W: Success
-
-    W->>RT: Broadcast change
-    RT-->>WEB: Change notification
-
-    WEB->>W: Refetch affected queries
+    DB-->>W: Mutation succeeded
+    W->>RT: Broadcast minimal event
+    W-->>WEB: Successful API response
+    RT-->>WEB: Item change notification
+    WEB->>W: Refetch matching filtered queries
     W->>DB: Read current state
-    DB-->>WEB: Latest state
+    DB-->>WEB: Latest D1-backed result
 ```
-
-WebSocket의 역할은 데이터 전달 자체가 아니라
-**변경 사실을 빠르게 전달하는 notification channel**이다.
 
 ---
 
-# 6. V0 — Capture Foundation
+## 6. Workspace View Rules
 
-V0의 목적:
+| View | Query | Move in | Move out |
+|---|---|---|---|
+| Inbox | `kind = inbox`, `status = active` | default capture or return action | change `kind`, archive, or soft delete |
+| Notes | `kind = note`, `status = active` | `kind = note` | `kind = inbox`, archive, or soft delete |
+| Purchase | `kind = purchase`, `status = active` | `kind = purchase` | `kind = inbox`, archive, or soft delete |
+| Print Queue | `kind = print_job`, `status = active` | `kind = print_job` | `kind = inbox`, archive, or soft delete |
+| Today | `status = active`, local `[00:00, next 00:00)` due range | set `due_at` to today | clear `due_at`, archive, or soft delete |
+| Archive | `status = archived` | `status = archived` | `status = active` or soft delete |
+| Trash | `deleted_at IS NOT NULL` | soft delete | restore |
 
-> Telegram과 Web 어디에서 입력하더라도
-> 데이터가 안전하게 D1에 저장되고,
-> Web Workspace에서 기본적인 관리가 가능한 상태.
+모든 active Item view는 `itemQueryKeys`의 `items` prefix 아래에 안정적인 filter key를 사용한다. Mutation 성공 시 관련 cache를 즉시 반영하고 item query prefix를 invalidate한다.
+
+---
+
+## 7. Actual Main Development History
+
+이 그래프는 `git log --oneline --decorate origin/main`에서 확인한 실제 `main` 커밋만 포함한다. 존재하지 않는 develop/release branch는 표현하지 않는다.
+
+```mermaid
+gitGraph
+    commit id: "0673b2c"
+    commit id: "fa5f57d"
+    commit id: "8cd1d2c"
+    commit id: "58e3cf2"
+    commit id: "f6d5da3"
+    commit id: "c772d1a"
+    commit id: "529ae71"
+    commit id: "79a21f4"
+    commit id: "da217e6"
+    commit id: "da47d9b"
+    commit id: "bd753dc"
+    commit id: "a899e20"
+    commit id: "dee5b82"
+    commit id: "5a1c857"
+    commit id: "ac892d7"
+    commit id: "9d814f2"
+```
+
+최근 V1 흐름:
+
+1. `bd753dc` — filtered item query/update foundation
+2. `a899e20` — Notes
+3. `dee5b82` — Archive
+4. `5a1c857` — Purchase
+5. `ac892d7` — Print Queue
+6. `9d814f2` — Today
+
+---
+
+## 8. Development Process
+
+작업 절차는 의사결정과 반복을 표현하므로 `flowchart`가 적합하다.
 
 ```mermaid
 flowchart LR
-    A[Capture] --> B[Persist]
-    B --> C[View]
-    C --> D[Edit]
-    D --> E[Delete]
-    E --> F[Restore]
-    F --> G[Secure]
-    G --> H[Realtime]
-    H --> I[Deploy]
-```
+    INSPECT[Inspect current code and Git state]
+    SCOPE[Define one bounded feature]
+    IMPLEMENT[Implement minimal change]
+    VERIFY[Typecheck, build, lint, diff check]
+    PASS{All checks pass?}
+    COMMIT[Commit to main]
+    PUSH[Push main]
+    DEPLOY[Automated or explicit deployment]
+    SMOKE[Production smoke verification]
+    DOCS[Update status documentation]
 
-현재 구현된 V0 baseline:
-
-- Telegram Capture
-- Telegram webhook validation
-- Allowed Telegram user validation
-- Duplicate protection
-- Capture → Item 생성
-- Successful capture reaction
-- Web Quick Capture
-- Inbox
-- Item Editing
-- Soft Delete
-- Trash
-- Restore
-- Capture preservation
-- Web API Access Key
-- Durable Object WebSocket
-- Realtime query invalidation
-- Cloudflare Worker production deployment
-- GitHub Pages deployment
-
-```mermaid
-flowchart LR
-    V0A[Telegram] --> V0B[D1]
-    V0B --> V0C[Web]
-    V0C --> V0D[Editing]
-    V0D --> V0E[Trash]
-    V0E --> V0F[Auth]
-    V0F --> V0G[Realtime]
-    V0G --> V0H[V0 Baseline]
-
-    classDef done fill:#d4edda,stroke:#22863a,color:#111;
-    class V0A,V0B,V0C,V0D,V0E,V0F,V0G,V0H done;
-```
-
----
-
-# 7. V1 — Personal Workspace
-
-V1의 핵심 목표:
-
-> 단순 Capture 저장소를 넘어,
-> 매일 실제로 사용할 수 있는 개인 Workspace로 만든다.
-
-```mermaid
-flowchart TD
-
-    BASE[V0 Stable Baseline]
-
-    BASE --> REL[Reliability]
-    BASE --> NAV[Workspace Navigation]
-    BASE --> TODAY[Today]
-    BASE --> PROJECTS[Projects]
-    BASE --> SEARCH[Search]
-
-    REL --> UX[UX Hardening]
-    NAV --> UX
-    TODAY --> UX
-    PROJECTS --> UX
-    SEARCH --> UX
-
-    UX --> TEST[Integration Verification]
-    TEST --> PROD[Production Verification]
-
-    PROD --> V1[V1]
-```
-
-V1 후보 작업 영역:
-
-### Foundation Hardening
-
-- API validation
-- Error handling
-- Loading states
-- Empty states
-- WebSocket reconnect handling
-- Realtime consistency
-- Multi-client behavior
-- Duplicate behavior
-- Production smoke tests
-
-### Workspace
-
-- Today
-- Projects
-- Search
-- Navigation
-- Better item organization
-- Mobile usability
-
-### Release Quality
-
-- Build verification
-- Worker typecheck
-- Database migration safety
-- Production API verification
-- Pages verification
-- Regression verification
-
----
-
-# 8. V2 — Structured Knowledge & Action
-
-V2부터 Item이 단순 메모를 넘어
-구조화된 정보와 행동 단위로 발전한다.
-
-```mermaid
-flowchart TD
-
-    ITEM[Item]
-
-    ITEM --> PROJECT[Project]
-    ITEM --> TAG[Tags]
-    ITEM --> TASK[Task]
-    ITEM --> DUE[Due Date]
-    ITEM --> ATTACH[Attachment]
-    ITEM --> REVISION[Revision]
-
-    TASK --> ACTION[Action Management]
-    DUE --> ACTION
-
-    PROJECT --> ORGANIZE[Structured Knowledge]
-    TAG --> ORGANIZE
-
-    ATTACH --> KNOWLEDGE[Rich Knowledge]
-    REVISION --> KNOWLEDGE
-```
-
-후보 기능:
-
-- Tasks
-- Due dates
-- Tags
-- Attachments
-- Revision history
-- Advanced filtering
-- Archive concepts
-- Saved views
-
----
-
-# 9. V3 — Automation & Intelligence
-
-AI는 Capture의 필수 경로가 아니다.
-
-기본 Capture는 AI 없이도 항상 동작해야 한다.
-
-```mermaid
-flowchart TD
-
-    DATA[NoteRelay Data]
-
-    DATA --> OCR[OCR]
-    DATA --> CLASSIFY[AI Classification]
-    DATA --> SEARCH[Semantic / AI Search]
-    DATA --> SUMMARY[Summarization]
-
-    OCR --> ASSIST[Assistant Layer]
-    CLASSIFY --> ASSIST
-    SEARCH --> ASSIST
-    SUMMARY --> ASSIST
-
-    ASSIST --> USER[User Decision]
-
-    USER --> AUTOMATION[Optional Automation]
-```
-
-가능한 기능:
-
-- OCR
-- Automatic classification
-- Suggested projects / tags
-- Semantic search
-- Summarization
-- Related-item discovery
-- Natural-language retrieval
-- Optional automation
-
-AI 원칙:
-
-> AI는 정리와 검색을 보조한다.
-> Capture 자체의 성공 여부는 AI에 의존하지 않는다.
-
----
-
-# 10. Specialized Workflows
-
-일반 Item 모델 위에 목적별 Queue를 추가할 수 있다.
-
-```mermaid
-flowchart LR
-
-    ITEM[Items]
-
-    ITEM --> PRINT[Print Queue]
-    ITEM --> PURCHASE[Purchase Tracking]
-    ITEM --> TASKS[Tasks]
-    ITEM --> READ[Reading Queue]
-    ITEM --> CUSTOM[Future Queues]
-```
-
-가능한 확장:
-
-- Print Queue
-- Purchase Tracking
-- Reading Queue
-- Waiting / Follow-up Queue
-- Custom saved workflows
-
----
-
-# 11. Development Process
-
-모든 기능 개발은 아래 루프를 따른다.
-
-```mermaid
-flowchart LR
-
-    INSPECT[Inspect] --> DEFINE[Define Scope]
-    DEFINE --> IMPLEMENT[Implement]
-    IMPLEMENT --> CHECK[Typecheck / Build]
-    CHECK --> TEST[Test]
-
-    TEST --> PASS{Pass?}
-
-    PASS -- No --> IMPLEMENT
-
-    PASS -- Yes --> COMMIT[Commit]
-    COMMIT --> DEPLOY[Deploy]
-    DEPLOY --> VERIFY[Production Verify]
-    VERIFY --> DOCS[Update Docs]
+    INSPECT --> SCOPE --> IMPLEMENT --> VERIFY --> PASS
+    PASS -->|No| IMPLEMENT
+    PASS -->|Yes| COMMIT --> PUSH --> DEPLOY --> SMOKE --> DOCS
     DOCS --> INSPECT
 ```
 
+Commit, push, production deployment는 해당 작업에서 명시적으로 허용된 경우에만 수행한다.
+
 ---
 
-# 12. Feature Lifecycle
+## 9. Feature Lifecycle
 
 ```mermaid
 stateDiagram-v2
-
     [*] --> TODO
-
-    TODO --> DOING
-    DOING --> VERIFY
-
-    VERIFY --> DOING: Failed
-    VERIFY --> DONE: Passed
-
-    TODO --> BLOCKED
-    DOING --> BLOCKED
-
-    BLOCKED --> TODO: Unblocked
-
+    TODO --> DOING: scope approved
+    DOING --> VERIFY: implementation complete
+    VERIFY --> DOING: verification failed
+    VERIFY --> DONE: checks passed
+    TODO --> BLOCKED: dependency missing
+    DOING --> BLOCKED: external blocker
+    BLOCKED --> TODO: blocker resolved
     DONE --> [*]
 ```
 
-상태 정의:
-
-| Status | Meaning |
+| 상태 | 정의 |
 |---|---|
-| `TODO` | 아직 시작하지 않음 |
-| `DOING` | 구현 중 |
-| `VERIFY` | 구현 완료, 검증 필요 |
-| `DONE` | 구현 + 검증 완료 |
-| `BLOCKED` | 외부 조건 또는 선행 작업 필요 |
+| `TODO` | 범위는 알려졌지만 구현을 시작하지 않음 |
+| `DOING` | 코드 또는 문서 변경 진행 중 |
+| `VERIFY` | 구현 완료 후 검증 중 |
+| `DONE` | 구현, 검증, Git 상태 반영 완료 |
+| `BLOCKED` | 외부 조건 없이는 진행 불가 |
 
 ---
 
-# 13. Release Gates
+## 10. Release Gates
 
 ```mermaid
 flowchart TD
+    FEATURE[Scoped change complete]
+    TYPES[Worker typecheck]
+    BUILD[Web production build]
+    LINT[Web lint]
+    DIFF[git diff check]
+    REVIEW[Scope and regression review]
+    READY{Ready for main?}
+    COMMIT[Commit and push when authorized]
+    DEPLOY[Deploy when authorized]
+    SMOKE[Production smoke test]
+    BASELINE[Verified baseline]
 
-    FEATURE[Feature Complete]
-
-    FEATURE --> TYPES[Typecheck]
-    TYPES --> BUILD[Production Build]
-    BUILD --> API[API Verification]
-    API --> UI[UI Verification]
-    UI --> RT[Realtime Verification]
-    RT --> REG[Regression Check]
-
-    REG --> READY{Ready?}
-
-    READY -- No --> FIX[Fix]
-    FIX --> TYPES
-
-    READY -- Yes --> COMMIT[Commit / Merge]
-    COMMIT --> DEPLOY[Production Deploy]
-    DEPLOY --> SMOKE[Smoke Test]
-
-    SMOKE --> RELEASE[Release Baseline]
+    FEATURE --> TYPES --> BUILD --> LINT --> DIFF --> REVIEW --> READY
+    READY -->|No| FEATURE
+    READY -->|Yes| COMMIT --> DEPLOY --> SMOKE --> BASELINE
 ```
+
+Database migration이 포함될 때만 별도의 migration safety 검증을 추가한다. Realtime 변경이 포함될 때만 WebSocket 연결과 multi-client 동작을 추가 검증한다.
 
 ---
 
-# 14. Version Progress
+## 11. Current Position and Next Scope
 
 ```mermaid
-timeline
-    title NoteRelay Evolution
-
-    V0 : Capture foundation
-       : Telegram
-       : Web Workspace
-       : D1
-       : Editing
-       : Trash / Restore
-       : Authentication
-       : Realtime
-       : Production deployment
-
-    V1 : Daily-use workspace
-       : Reliability hardening
-       : Today
-       : Projects
-       : Search
-       : Navigation / UX
-
-    V2 : Structured knowledge
-       : Tasks
-       : Due dates
-       : Tags
-       : Attachments
-       : Revisions
-
-    V3 : Intelligence
-       : OCR
-       : AI classification
-       : Semantic search
-       : Summarization
-       : Automation
+stateDiagram-v2
+    [*] --> V0Complete
+    V0Complete --> V1Implemented
+    V1Implemented --> V1Remaining
+    V1Remaining --> V1Verified
+    V1Verified --> V2Planned
 ```
+
+- `V0Complete`: Capture, persistence, auth, CRUD, Trash/Restore, realtime, production baseline
+- `V1Implemented`: Notes, Archive, Purchase, Print Queue, Today
+- `V1Remaining`: Projects, Search, reliability and UX verification
+- `V1Verified`: 남은 V1 범위와 production regression 검증 완료
+- `V2Planned`: Tasks, tags, attachments, revisions 등 구조화 기능 검토
 
 ---
 
-# 15. Current Position
+## 12. Guiding Principles
 
-```mermaid
-flowchart LR
-
-    V0_START[V0 Start] --> CAPTURE[Capture]
-    CAPTURE --> WORKSPACE[Workspace]
-    WORKSPACE --> CRUD[Edit / Trash]
-    CRUD --> SECURITY[Authentication]
-    SECURITY --> REALTIME[Realtime]
-    REALTIME --> CURRENT((CURRENT))
-    CURRENT --> HARDEN[V0 Final Audit]
-    HARDEN --> V1_START[V1 Development]
-```
-
-현재 위치:
-
-**V0 기능 구현은 대부분 완료되었고,
-V1 개발에 들어가기 전에 현재 baseline을 검증하고 정리하는 단계.**
-
----
-
-# 16. Immediate Development Flow
-
-```mermaid
-flowchart TD
-
-    CURRENT[Current main]
-
-    CURRENT --> AUDIT[Architecture / Code Audit]
-
-    AUDIT --> BUGS{Regression or technical debt?}
-
-    BUGS -- Yes --> FIX[Fix V0 baseline]
-    FIX --> VERIFY[Verify baseline]
-
-    BUGS -- No --> VERIFY
-
-    VERIFY --> SCOPE[Define concrete V1 scope]
-
-    SCOPE --> BACKLOG[V1 Backlog]
-
-    BACKLOG --> FEATURE[Implement smallest feature]
-
-    FEATURE --> TEST[Test]
-    TEST --> COMMIT[Commit]
-    COMMIT --> DEPLOY[Deploy]
-    DEPLOY --> NEXT[Next Feature]
-
-    NEXT --> FEATURE
-```
-
----
-
-# 17. Guiding Principles
-
-1. Capture must remain fast.
-2. Original Capture data should be preserved.
-3. D1 is the source of truth.
-4. WebSocket is a synchronization signal, not the primary datastore.
-5. Core Capture must not depend on AI.
-6. Features should be implemented in small independently verifiable steps.
-7. Production behavior must be verified after meaningful changes.
-8. Documentation should evolve with the implementation.
-9. Version boundaries may evolve based on actual usage.
-10. Existing stable functionality should not be rewritten without a concrete reason.
-
----
-
-# 18. Roadmap Status
-
-```mermaid
-flowchart LR
-
-    V0[V0<br/>Capture Foundation]
-    V1[V1<br/>Personal Workspace]
-    V2[V2<br/>Structured Knowledge]
-    V3[V3<br/>Automation & Intelligence]
-
-    V0 -->|Current| V1
-    V1 --> V2
-    V2 --> V3
-
-    classDef current fill:#fff3cd,stroke:#856404,color:#111;
-    class V1 current;
-```
-
-현재 개발 방향:
-
-**V0 baseline 검증 → V1 scope 확정 → V1 기능 개발 → V1 release**
-
-이후 실제 사용 경험을 바탕으로 V2/V3의 범위를 재조정한다.
+1. Capture는 빠르고 AI에 의존하지 않아야 한다.
+2. Capture 원본은 보존하고 Item만 관리 가능한 상태로 변경한다.
+3. D1은 항상 source of truth다.
+4. WebSocket은 동기화 신호이며 데이터 저장소가 아니다.
+5. 기존 안정 기능은 구체적인 이유 없이 재작성하지 않는다.
+6. 기능은 작고 독립적으로 검증 가능한 단위로 구현한다.
+7. 문서는 실제 코드, `origin/main`, working tree 상태와 함께 갱신한다.
+8. 버전과 roadmap은 실제 사용 결과에 따라 조정한다.
