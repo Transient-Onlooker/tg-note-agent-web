@@ -1,4 +1,4 @@
-﻿import { Hono } from "hono";
+import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
   processTelegramUpdate,
@@ -23,8 +23,43 @@ type CreateItemRequest = {
   body?: string;
 };
 
+const ITEM_KINDS = [
+  "inbox",
+  "note",
+  "task",
+  "reference",
+  "purchase",
+  "print_job",
+] as const;
+
+const ITEM_STATUSES = [
+  "active",
+  "waiting",
+  "done",
+  "archived",
+  "cancelled",
+] as const;
+
+type ItemKind = (typeof ITEM_KINDS)[number];
+type ItemStatus = (typeof ITEM_STATUSES)[number];
+
+const itemKinds = new Set<string>(ITEM_KINDS);
+const itemStatuses = new Set<string>(ITEM_STATUSES);
+
+function isItemKind(value: unknown): value is ItemKind {
+  return typeof value === "string" && itemKinds.has(value);
+}
+
+function isItemStatus(value: unknown): value is ItemStatus {
+  return typeof value === "string" && itemStatuses.has(value);
+}
+
 type UpdateItemRequest = {
   body?: unknown;
+  kind?: unknown;
+  status?: unknown;
+  project_id?: unknown;
+  due_at?: unknown;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -92,7 +127,57 @@ app.get("/api/health", (c) => {
 });
 
 app.get("/api/items", async (c) => {
-  const result = await c.env.DB.prepare(`
+  const kind = c.req.query("kind");
+  const status = c.req.query("status");
+  const projectId = c.req.query("project_id");
+  const dueFrom = c.req.query("due_from");
+  const dueTo = c.req.query("due_to");
+
+  if (kind && !isItemKind(kind)) {
+    return c.json({ error: "invalid_kind" }, 400);
+  }
+
+  if (status && !isItemStatus(status)) {
+    return c.json({ error: "invalid_status" }, 400);
+  }
+
+  if (dueFrom && Number.isNaN(Date.parse(dueFrom))) {
+    return c.json({ error: "invalid_due_from" }, 400);
+  }
+
+  if (dueTo && Number.isNaN(Date.parse(dueTo))) {
+    return c.json({ error: "invalid_due_to" }, 400);
+  }
+
+  const conditions = ["deleted_at IS NULL"];
+  const bindings: string[] = [];
+
+  if (kind) {
+    conditions.push("kind = ?");
+    bindings.push(kind);
+  }
+
+  if (status) {
+    conditions.push("status = ?");
+    bindings.push(status);
+  }
+
+  if (projectId) {
+    conditions.push("project_id = ?");
+    bindings.push(projectId);
+  }
+
+  if (dueFrom) {
+    conditions.push("due_at >= ?");
+    bindings.push(new Date(dueFrom).toISOString());
+  }
+
+  if (dueTo) {
+    conditions.push("due_at < ?");
+    bindings.push(new Date(dueTo).toISOString());
+  }
+
+  const statement = c.env.DB.prepare(`
     SELECT
       id,
       capture_id,
@@ -111,16 +196,20 @@ app.get("/api/items", async (c) => {
       deleted_at,
       version
     FROM items
-    WHERE deleted_at IS NULL
+    WHERE ${conditions.join("\n      AND ")}
     ORDER BY created_at DESC
     LIMIT 100
-  `).all();
+  `);
+
+  const result =
+    bindings.length > 0
+      ? await statement.bind(...bindings).all()
+      : await statement.all();
 
   return c.json({
     items: result.results,
   });
 });
-
 app.get("/api/trash", async (c) => {
   const result = await c.env.DB.prepare(`
     SELECT
@@ -255,32 +344,111 @@ app.patch("/api/items/:id", async (c) => {
     return c.json({ error: "invalid_body" }, 400);
   }
 
-  if (
-    !payload ||
-    typeof payload !== "object" ||
-    typeof payload.body !== "string"
-  ) {
+  if (!payload || typeof payload !== "object") {
     return c.json({ error: "invalid_body" }, 400);
   }
 
-  const body = payload.body.trim();
+  const assignments: string[] = [];
+  const bindings: (string | null)[] = [];
 
-  if (!body) {
-    return c.json({ error: "invalid_body" }, 400);
+  const hasBody = Object.prototype.hasOwnProperty.call(payload, "body");
+  const hasKind = Object.prototype.hasOwnProperty.call(payload, "kind");
+  const hasStatus = Object.prototype.hasOwnProperty.call(payload, "status");
+  const hasProjectId = Object.prototype.hasOwnProperty.call(
+    payload,
+    "project_id",
+  );
+  const hasDueAt = Object.prototype.hasOwnProperty.call(payload, "due_at");
+
+  if (hasBody) {
+    if (typeof payload.body !== "string") {
+      return c.json({ error: "invalid_body" }, 400);
+    }
+
+    const body = payload.body.trim();
+
+    if (!body) {
+      return c.json({ error: "invalid_body" }, 400);
+    }
+
+    assignments.push("body = ?");
+    bindings.push(body);
   }
 
+  if (hasKind) {
+    const kind = payload.kind;
+
+    if (!isItemKind(kind)) {
+      return c.json({ error: "invalid_kind" }, 400);
+    }
+
+    assignments.push("kind = ?");
+    bindings.push(kind);
+  }
+
+  if (hasStatus) {
+    const status = payload.status;
+
+    if (!isItemStatus(status)) {
+      return c.json({ error: "invalid_status" }, 400);
+    }
+
+    assignments.push("status = ?");
+    bindings.push(status);
+  }
+
+  if (hasProjectId) {
+    if (
+      payload.project_id !== null &&
+      (typeof payload.project_id !== "string" ||
+        !payload.project_id.trim())
+    ) {
+      return c.json({ error: "invalid_project_id" }, 400);
+    }
+
+    assignments.push("project_id = ?");
+    bindings.push(
+      typeof payload.project_id === "string"
+        ? payload.project_id.trim()
+        : null,
+    );
+  }
+
+  if (hasDueAt) {
+    if (
+      payload.due_at !== null &&
+      (typeof payload.due_at !== "string" ||
+        Number.isNaN(Date.parse(payload.due_at)))
+    ) {
+      return c.json({ error: "invalid_due_at" }, 400);
+    }
+
+    assignments.push("due_at = ?");
+    bindings.push(
+      typeof payload.due_at === "string"
+        ? new Date(payload.due_at).toISOString()
+        : null,
+    );
+  }
+
+  if (assignments.length === 0) {
+    return c.json({ error: "no_changes" }, 400);
+  }
+
+  const itemId = c.req.param("id");
   const now = new Date().toISOString();
+
   const result = await c.env.DB
     .prepare(`
       UPDATE items
       SET
-        body = ?,
+        ${assignments.join(",\n        ")},
         updated_at = ?,
         version = version + 1
       WHERE id = ?
         AND deleted_at IS NULL
     `)
-    .bind(body, now, c.req.param("id"))
+    .bind(...bindings, now, itemId)
     .run();
 
   if (result.meta.changes !== 1) {
@@ -310,19 +478,18 @@ app.patch("/api/items/:id", async (c) => {
       WHERE id = ?
       LIMIT 1
     `)
-    .bind(c.req.param("id"))
+    .bind(itemId)
     .first();
 
   c.executionCtx.waitUntil(
     broadcastRealtime(c.env, {
       type: "item_updated",
-      item_id: c.req.param("id"),
+      item_id: itemId,
     }),
   );
 
   return c.json({ item });
 });
-
 app.post("/api/items/:id/restore", async (c) => {
   const now = new Date().toISOString();
   const result = await c.env.DB

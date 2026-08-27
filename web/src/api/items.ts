@@ -1,12 +1,32 @@
 import { API_BASE_URL, authenticatedFetch } from "./auth";
 
+export const ITEM_KINDS = [
+  "inbox",
+  "note",
+  "task",
+  "reference",
+  "purchase",
+  "print_job",
+] as const;
+
+export const ITEM_STATUSES = [
+  "active",
+  "waiting",
+  "done",
+  "archived",
+  "cancelled",
+] as const;
+
+export type ItemKind = (typeof ITEM_KINDS)[number];
+export type ItemStatus = (typeof ITEM_STATUSES)[number];
+
 export interface Item {
   id: string;
   capture_id: string | null;
   parent_id: string | null;
   project_id: string | null;
-  kind: string;
-  status: string;
+  kind: ItemKind;
+  status: ItemStatus;
   title: string | null;
   body: string;
   due_at: string | null;
@@ -19,8 +39,54 @@ export interface Item {
   version: number;
 }
 
-export async function getItems(): Promise<Item[]> {
-  const response = await authenticatedFetch(`${API_BASE_URL}/api/items`);
+export type ItemFilters = {
+  kind?: ItemKind;
+  status?: ItemStatus;
+  projectId?: string;
+  dueFrom?: string;
+  dueTo?: string;
+};
+
+export type UpdateItemInput = {
+  body?: string;
+  kind?: ItemKind;
+  status?: ItemStatus;
+  project_id?: string | null;
+  due_at?: string | null;
+};
+
+function buildItemsUrl(filters: ItemFilters) {
+  const params = new URLSearchParams();
+
+  if (filters.kind) {
+    params.set("kind", filters.kind);
+  }
+
+  if (filters.status) {
+    params.set("status", filters.status);
+  }
+
+  if (filters.projectId) {
+    params.set("project_id", filters.projectId);
+  }
+
+  if (filters.dueFrom) {
+    params.set("due_from", filters.dueFrom);
+  }
+
+  if (filters.dueTo) {
+    params.set("due_to", filters.dueTo);
+  }
+
+  const query = params.toString();
+
+  return `${API_BASE_URL}/api/items${query ? `?${query}` : ""}`;
+}
+
+export async function listItems(
+  filters: ItemFilters = {},
+): Promise<Item[]> {
+  const response = await authenticatedFetch(buildItemsUrl(filters));
 
   if (!response.ok) {
     throw new Error(`Failed to fetch items: ${response.status}`);
@@ -28,6 +94,13 @@ export async function getItems(): Promise<Item[]> {
 
   const data: { items: Item[] } = await response.json();
   return data.items;
+}
+
+export async function getItems(): Promise<Item[]> {
+  return listItems({
+    kind: "inbox",
+    status: "active",
+  });
 }
 
 export async function listTrash(): Promise<Item[]> {
@@ -74,7 +147,10 @@ export async function deleteItem(id: string): Promise<void> {
   }
 }
 
-export async function updateItem(id: string, body: string): Promise<Item> {
+export async function updateItemFields(
+  id: string,
+  input: UpdateItemInput,
+): Promise<Item> {
   const response = await authenticatedFetch(
     `${API_BASE_URL}/api/items/${encodeURIComponent(id)}`,
     {
@@ -82,7 +158,7 @@ export async function updateItem(id: string, body: string): Promise<Item> {
       headers: {
         "Content-Type": "application/json; charset=utf-8",
       },
-      body: JSON.stringify({ body }),
+      body: JSON.stringify(input),
     },
   );
 
@@ -92,6 +168,13 @@ export async function updateItem(id: string, body: string): Promise<Item> {
 
   const data: { item: Item } = await response.json();
   return data.item;
+}
+
+export async function updateItem(
+  id: string,
+  body: string,
+): Promise<Item> {
+  return updateItemFields(id, { body });
 }
 
 export async function restoreItem(id: string): Promise<Item> {
