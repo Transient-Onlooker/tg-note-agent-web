@@ -1,4 +1,5 @@
 import { API_BASE_URL, authenticatedFetch } from "./auth";
+export type { PrintJobProperties } from "@note-relay/shared";
 
 export const ITEM_KINDS = [
   "inbox",
@@ -53,6 +54,7 @@ export type UpdateItemInput = {
   status?: ItemStatus;
   project_id?: string | null;
   due_at?: string | null;
+  properties_json?: string;
 };
 
 export const itemQueryKeys = {

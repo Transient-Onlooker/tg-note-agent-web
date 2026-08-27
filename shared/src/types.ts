@@ -53,6 +53,16 @@ export interface Item {
   version: number;
 }
 
+export interface PrintJobProperties {
+  customer?: string;
+  colors?: string[];
+  grams?: number;
+  price?: number;
+  payment?: string;
+  model_url?: string;
+  note?: string;
+}
+
 export interface Project {
   id: string;
   name: string;

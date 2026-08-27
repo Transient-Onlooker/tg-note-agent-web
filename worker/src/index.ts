@@ -54,12 +54,31 @@ function isItemStatus(value: unknown): value is ItemStatus {
   return typeof value === "string" && itemStatuses.has(value);
 }
 
+function normalizePropertiesJson(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return undefined;
+    }
+
+    return JSON.stringify(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
 type UpdateItemRequest = {
   body?: unknown;
   kind?: unknown;
   status?: unknown;
   project_id?: unknown;
   due_at?: unknown;
+  properties_json?: unknown;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -359,6 +378,10 @@ app.patch("/api/items/:id", async (c) => {
     "project_id",
   );
   const hasDueAt = Object.prototype.hasOwnProperty.call(payload, "due_at");
+  const hasPropertiesJson = Object.prototype.hasOwnProperty.call(
+    payload,
+    "properties_json",
+  );
 
   if (hasBody) {
     if (typeof payload.body !== "string") {
@@ -429,6 +452,17 @@ app.patch("/api/items/:id", async (c) => {
         ? new Date(payload.due_at).toISOString()
         : null,
     );
+  }
+
+  if (hasPropertiesJson) {
+    const propertiesJson = normalizePropertiesJson(payload.properties_json);
+
+    if (propertiesJson === undefined) {
+      return c.json({ error: "invalid_properties_json" }, 400);
+    }
+
+    assignments.push("properties_json = ?");
+    bindings.push(propertiesJson);
   }
 
   if (assignments.length === 0) {
