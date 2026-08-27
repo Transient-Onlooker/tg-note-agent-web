@@ -881,6 +881,34 @@
   cursor: not-allowed;
 }
 
+.trash-card .note-card__content {
+  padding-right: 56px;
+}
+
+.trash-card__restore {
+  position: absolute;
+  top: 17px;
+  right: 16px;
+  min-height: 30px;
+  padding: 5px 9px;
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 700;
+  background: var(--accent-soft);
+  border: 1px solid #dbe3ff;
+  border-radius: 7px;
+}
+
+.trash-card__restore:hover:not(:disabled) {
+  color: var(--accent-hover);
+  background: #e5eaff;
+}
+
+.trash-card__restore:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .note-card__body {
   margin: 0;
   overflow-wrap: anywhere;

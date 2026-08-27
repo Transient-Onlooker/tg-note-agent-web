@@ -95,6 +95,36 @@ app.get("/api/items", async (c) => {
   });
 });
 
+app.get("/api/trash", async (c) => {
+  const result = await c.env.DB.prepare(`
+    SELECT
+      id,
+      capture_id,
+      parent_id,
+      project_id,
+      kind,
+      status,
+      title,
+      body,
+      due_at,
+      properties_json,
+      position,
+      triaged_at,
+      created_at,
+      updated_at,
+      deleted_at,
+      version
+    FROM items
+    WHERE deleted_at IS NOT NULL
+    ORDER BY deleted_at DESC
+    LIMIT 100
+  `).all();
+
+  return c.json({
+    items: result.results,
+  });
+});
+
 app.post("/api/items", async (c) => {
   let payload: CreateItemRequest;
 
@@ -218,6 +248,54 @@ app.patch("/api/items/:id", async (c) => {
         AND deleted_at IS NULL
     `)
     .bind(body, now, c.req.param("id"))
+    .run();
+
+  if (result.meta.changes !== 1) {
+    return c.json({ error: "not_found" }, 404);
+  }
+
+  const item = await c.env.DB
+    .prepare(`
+      SELECT
+        id,
+        capture_id,
+        parent_id,
+        project_id,
+        kind,
+        status,
+        title,
+        body,
+        due_at,
+        properties_json,
+        position,
+        triaged_at,
+        created_at,
+        updated_at,
+        deleted_at,
+        version
+      FROM items
+      WHERE id = ?
+      LIMIT 1
+    `)
+    .bind(c.req.param("id"))
+    .first();
+
+  return c.json({ item });
+});
+
+app.post("/api/items/:id/restore", async (c) => {
+  const now = new Date().toISOString();
+  const result = await c.env.DB
+    .prepare(`
+      UPDATE items
+      SET
+        deleted_at = NULL,
+        updated_at = ?,
+        version = version + 1
+      WHERE id = ?
+        AND deleted_at IS NOT NULL
+    `)
+    .bind(now, c.req.param("id"))
     .run();
 
   if (result.meta.changes !== 1) {

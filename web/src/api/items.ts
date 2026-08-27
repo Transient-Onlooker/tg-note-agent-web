@@ -30,6 +30,17 @@ export async function getItems(): Promise<Item[]> {
   return data.items;
 }
 
+export async function listTrash(): Promise<Item[]> {
+  const response = await authenticatedFetch(`${API_BASE_URL}/api/trash`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch trash: ${response.status}`);
+  }
+
+  const data: { items: Item[] } = await response.json();
+  return data.items;
+}
+
 export async function createItem(body: string): Promise<void> {
   const trimmedBody = body.trim();
 
@@ -77,6 +88,22 @@ export async function updateItem(id: string, body: string): Promise<Item> {
 
   if (!response.ok) {
     throw new Error(`Failed to update item: ${response.status}`);
+  }
+
+  const data: { item: Item } = await response.json();
+  return data.item;
+}
+
+export async function restoreItem(id: string): Promise<Item> {
+  const response = await authenticatedFetch(
+    `${API_BASE_URL}/api/items/${encodeURIComponent(id)}/restore`,
+    {
+      method: "POST",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to restore item: ${response.status}`);
   }
 
   const data: { item: Item } = await response.json();
