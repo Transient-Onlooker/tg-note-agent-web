@@ -756,10 +756,85 @@
   padding-right: 32px;
 }
 
+.note-card__editor {
+  display: grid;
+  gap: 10px;
+}
+
+.note-card__textarea {
+  display: block;
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 11px;
+  overflow: auto;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.65;
+  resize: vertical;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+}
+
+.note-card__textarea:focus {
+  border-color: rgba(49, 91, 216, 0.52);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(49, 91, 216, 0.08);
+}
+
+.note-card__edit-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.note-card__editor-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.note-card__cancel,
+.note-card__save {
+  min-height: 32px;
+  padding: 6px 11px;
+  font-size: 11px;
+  font-weight: 650;
+  border-radius: 7px;
+}
+
+.note-card__cancel {
+  color: var(--text-soft);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+}
+
+.note-card__cancel:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.note-card__save {
+  color: #ffffff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.note-card__save:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.note-card__save:disabled,
+.note-card__cancel:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.note-card__edit,
 .note-card__delete {
   position: absolute;
   top: 14px;
-  right: 14px;
   display: grid;
   place-items: center;
   width: 28px;
@@ -776,9 +851,24 @@
     opacity 140ms ease;
 }
 
+.note-card__edit {
+  right: 48px;
+}
+
+.note-card__delete {
+  right: 14px;
+}
+
+.note-card:hover .note-card__edit,
+.note-card__edit:focus-visible,
 .note-card:hover .note-card__delete,
 .note-card__delete:focus-visible {
   opacity: 1;
+}
+
+.note-card__edit:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .note-card__delete:hover:not(:disabled) {
@@ -1231,6 +1321,10 @@
   }
 
   .note-card__delete {
+    opacity: 1;
+  }
+
+  .note-card__edit {
     opacity: 1;
   }
 

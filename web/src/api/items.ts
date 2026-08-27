@@ -62,3 +62,23 @@ export async function deleteItem(id: string): Promise<void> {
     throw new Error(`Failed to delete item: ${response.status}`);
   }
 }
+
+export async function updateItem(id: string, body: string): Promise<Item> {
+  const response = await authenticatedFetch(
+    `${API_BASE_URL}/api/items/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify({ body }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to update item: ${response.status}`);
+  }
+
+  const data: { item: Item } = await response.json();
+  return data.item;
+}

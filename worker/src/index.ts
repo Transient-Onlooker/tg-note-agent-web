@@ -17,6 +17,10 @@ type CreateItemRequest = {
   body?: string;
 };
 
+type UpdateItemRequest = {
+  body?: unknown;
+};
+
 const app = new Hono<{ Bindings: Bindings }>();
 
 app.use(
@@ -177,6 +181,76 @@ app.post("/api/items", async (c) => {
     },
     201,
   );
+});
+
+app.patch("/api/items/:id", async (c) => {
+  let payload: UpdateItemRequest;
+
+  try {
+    payload = await c.req.json<UpdateItemRequest>();
+  } catch {
+    return c.json({ error: "invalid_body" }, 400);
+  }
+
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    typeof payload.body !== "string"
+  ) {
+    return c.json({ error: "invalid_body" }, 400);
+  }
+
+  const body = payload.body.trim();
+
+  if (!body) {
+    return c.json({ error: "invalid_body" }, 400);
+  }
+
+  const now = new Date().toISOString();
+  const result = await c.env.DB
+    .prepare(`
+      UPDATE items
+      SET
+        body = ?,
+        updated_at = ?,
+        version = version + 1
+      WHERE id = ?
+        AND deleted_at IS NULL
+    `)
+    .bind(body, now, c.req.param("id"))
+    .run();
+
+  if (result.meta.changes !== 1) {
+    return c.json({ error: "not_found" }, 404);
+  }
+
+  const item = await c.env.DB
+    .prepare(`
+      SELECT
+        id,
+        capture_id,
+        parent_id,
+        project_id,
+        kind,
+        status,
+        title,
+        body,
+        due_at,
+        properties_json,
+        position,
+        triaged_at,
+        created_at,
+        updated_at,
+        deleted_at,
+        version
+      FROM items
+      WHERE id = ?
+      LIMIT 1
+    `)
+    .bind(c.req.param("id"))
+    .first();
+
+  return c.json({ item });
 });
 
 app.delete("/api/items/:id", async (c) => {

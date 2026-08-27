@@ -9,7 +9,13 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { createItem, deleteItem, getItems } from "./api/items";
+import {
+  createItem,
+  deleteItem,
+  getItems,
+  updateItem,
+  type Item,
+} from "./api/items";
 import {
   AUTH_EXPIRED_EVENT,
   AuthError,
@@ -37,6 +43,7 @@ type IconName =
   | "refresh"
   | "relay"
   | "delete"
+  | "edit"
   | "lock";
 
 interface NavigationItem {
@@ -166,6 +173,12 @@ const iconPaths: Record<IconName, ReactNode> = {
     <>
       <path d="M5 7h14M10 11v5M14 11v5" />
       <path d="m9 7 .75-2.25h4.5L15 7M7 7l.75 13h8.5L17 7" />
+    </>
+  ),
+  edit: (
+    <>
+      <path d="m5 16-.75 3.75L8 19l10.75-10.75a2.12 2.12 0 0 0-3-3L5 16Z" />
+      <path d="m14.5 6.5 3 3" />
     </>
   ),
   lock: (
@@ -391,6 +404,9 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const [draft, setDraft] = useState("");
   const [activeView, setActiveView] = useState<ViewId>("inbox");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const itemsQuery = useQuery({
@@ -410,6 +426,24 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     mutationFn: deleteItem,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["items"] });
+    },
+  });
+
+  const updateItemMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: string }) =>
+      updateItem(id, body),
+    onSuccess: (updatedItem: Item) => {
+      queryClient.setQueryData<Item[]>(["items"], (items) =>
+        items?.map((item) =>
+          item.id === updatedItem.id ? updatedItem : item,
+        ),
+      );
+      setEditingItemId(null);
+      setEditDraft("");
+      setEditError(null);
+    },
+    onError: () => {
+      setEditError("수정하지 못했습니다.");
     },
   });
 
@@ -452,6 +486,33 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const handleNavigation = (view: ViewId) => {
     setActiveView(view);
     setIsSidebarOpen(false);
+  };
+
+  const startEditing = (item: Item) => {
+    updateItemMutation.reset();
+    setEditingItemId(item.id);
+    setEditDraft(item.body);
+    setEditError(null);
+  };
+
+  const cancelEditing = () => {
+    updateItemMutation.reset();
+    setEditingItemId(null);
+    setEditDraft("");
+    setEditError(null);
+  };
+
+  const saveEditing = () => {
+    const trimmedBody = editDraft.trim();
+
+    if (!editingItemId || !trimmedBody || updateItemMutation.isPending) {
+      return;
+    }
+
+    updateItemMutation.mutate({
+      id: editingItemId,
+      body: trimmedBody,
+    });
   };
 
   const renderInbox = () => (
@@ -583,20 +644,78 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
 
         {itemsQuery.isSuccess &&
           itemsQuery.data.map((item) => (
-            <article className="note-card" key={item.id}>
+            <article
+              className={`note-card${editingItemId === item.id ? " note-card--editing" : ""}`}
+              key={item.id}
+            >
               <span className="note-card__marker" aria-hidden="true">
                 <Icon name="notes" size={18} />
               </span>
               <div className="note-card__content">
-                <p className="note-card__body">{item.body}</p>
-                <div className="note-card__meta">
-                  <span className="kind-badge">{item.kind}</span>
-                  <span className="meta-separator" aria-hidden="true" />
-                  <time dateTime={item.created_at}>
-                    {formatCreatedAt(item.created_at)}
-                  </time>
-                </div>
+                {editingItemId === item.id ? (
+                  <div className="note-card__editor">
+                    <textarea
+                      className="note-card__textarea"
+                      value={editDraft}
+                      onChange={(event) => {
+                        setEditDraft(event.target.value);
+                        if (editError) {
+                          setEditError(null);
+                        }
+                      }}
+                      aria-label="메모 수정"
+                      rows={4}
+                      autoFocus
+                    />
+                    {editError && (
+                      <p className="note-card__edit-error" role="alert">
+                        {editError}
+                      </p>
+                    )}
+                    <div className="note-card__editor-actions">
+                      <button
+                        className="note-card__cancel"
+                        type="button"
+                        onClick={cancelEditing}
+                        disabled={updateItemMutation.isPending}
+                      >
+                        취소
+                      </button>
+                      <button
+                        className="note-card__save"
+                        type="button"
+                        onClick={saveEditing}
+                        disabled={
+                          !editDraft.trim() || updateItemMutation.isPending
+                        }
+                      >
+                        {updateItemMutation.isPending ? "저장 중..." : "저장"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="note-card__body">{item.body}</p>
+                    <div className="note-card__meta">
+                      <span className="kind-badge">{item.kind}</span>
+                      <span className="meta-separator" aria-hidden="true" />
+                      <time dateTime={item.created_at}>
+                        {formatCreatedAt(item.created_at)}
+                      </time>
+                    </div>
+                  </>
+                )}
               </div>
+              {editingItemId !== item.id && (
+                <button
+                  className="note-card__edit"
+                  type="button"
+                  aria-label="메모 수정"
+                  onClick={() => startEditing(item)}
+                >
+                  <Icon name="edit" size={16} />
+                </button>
+              )}
               <button
                 className="note-card__delete"
                 type="button"
