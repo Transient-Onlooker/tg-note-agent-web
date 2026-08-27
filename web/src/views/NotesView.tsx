@@ -29,7 +29,9 @@ type NotesViewProps = {
   onArchive: (item: Item) => void;
   onPurchase?: (item: Item) => void;
   isPurchasing?: boolean;
+  isSendingToPrintQueue?: boolean;
   onDeleteRequest: (item: Item) => void;
+  onSendToPrintQueue?: (item: Item) => void;
 };
 
 export function NotesView({
@@ -59,7 +61,9 @@ export function NotesView({
   onArchive,
   onPurchase,
   isPurchasing = false,
+  isSendingToPrintQueue = false,
   onDeleteRequest,
+  onSendToPrintQueue,
 }: NotesViewProps) {
   return (
     <section className="notes-view" aria-labelledby="notes-title">
@@ -228,6 +232,17 @@ export function NotesView({
                       onClick={() => onPurchase(item)}
                     >
                       <Icon name="purchase" size={16} />
+                    </button>
+                  )}
+                  {onSendToPrintQueue && (
+                    <button
+                      className="note-card__print-queue"
+                      type="button"
+                      aria-label="Print Queue로 이동"
+                      disabled={isSendingToPrintQueue}
+                      onClick={() => onSendToPrintQueue(item)}
+                    >
+                      <Icon name="print-queue" size={16} />
                     </button>
                   )}
                   <button

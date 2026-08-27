@@ -36,6 +36,7 @@ import { InboxView } from "./views/InboxView";
 import { NotesView } from "./views/NotesView";
 import { ArchiveView } from "./views/ArchiveView";
 import { PurchaseView } from "./views/PurchaseView";
+import { PrintQueueView } from "./views/PrintQueueView";
 import "./App.css";
 
 type AuthStatus = "checking" | "locked" | "authenticated";
@@ -168,6 +169,13 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     enabled: activeView === "purchase",
   });
 
+  const printQueueFilters = { kind: "print_job" as const, status: "active" as const };
+  const printQueueQuery = useQuery({
+    queryKey: itemQueryKeys.list(printQueueFilters),
+    queryFn: () => listItems({ kind: "print_job", status: "active" }),
+    enabled: activeView === "print-queue",
+  });
+
   const trashQuery = useQuery({
     queryKey: ["trash"],
     queryFn: listTrash,
@@ -213,7 +221,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   });
 
   const classifyItemMutation = useMutation({
-    mutationFn: ({ id, kind }: { id: string; kind: "inbox" | "note" | "purchase" }) =>
+    mutationFn: ({ id, kind }: { id: string; kind: "inbox" | "note" | "purchase" | "print_job" }) =>
       updateItemFields(id, { kind }),
     onSuccess: async (updatedItem: Item) => {
       queryClient.setQueryData<Item[]>(
@@ -240,6 +248,16 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
         itemQueryKeys.list(purchaseFilters),
         (items) =>
           updatedItem.kind === "purchase"
+            ? [
+                updatedItem,
+                ...(items ?? []).filter((item) => item.id !== updatedItem.id),
+              ]
+            : items?.filter((item) => item.id !== updatedItem.id),
+      );
+      queryClient.setQueryData<Item[]>(
+        itemQueryKeys.list(printQueueFilters),
+        (items) =>
+          updatedItem.kind === "print_job"
             ? [
                 updatedItem,
                 ...(items ?? []).filter((item) => item.id !== updatedItem.id),
@@ -282,6 +300,10 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     updateList(
       itemQueryKeys.list(purchaseFilters),
       updatedItem.status === "active" && updatedItem.kind === "purchase",
+    );
+    updateList(
+      itemQueryKeys.list(printQueueFilters),
+      updatedItem.status === "active" && updatedItem.kind === "print_job",
     );
   };
 
@@ -419,7 +441,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     deleteItemMutation.mutate(deleteTarget.id);
   };
 
-  const classifyItem = (item: Item, kind: "inbox" | "note" | "purchase") => {
+  const classifyItem = (item: Item, kind: "inbox" | "note" | "purchase" | "print_job") => {
     if (classifyItemMutation.isPending) {
       return;
     }
@@ -463,6 +485,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isClassifying={classifyItemMutation.isPending}
             isArchiving={archiveItemMutation.isPending}
             isPurchasing={classifyItemMutation.isPending}
+            isSendingToPrintQueue={classifyItemMutation.isPending}
             onDraftChange={(value) => {
               setDraft(value);
 
@@ -487,6 +510,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onClassify={(item) => classifyItem(item, "note")}
             onArchive={(item) => archiveItemMutation.mutate(item.id)}
             onPurchase={(item) => classifyItem(item, "purchase")}
+            onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "notes" ? (
@@ -505,6 +529,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isMovingToInbox={classifyItemMutation.isPending}
             isArchiving={archiveItemMutation.isPending}
             isPurchasing={classifyItemMutation.isPending}
+            isSendingToPrintQueue={classifyItemMutation.isPending}
             deleteError={deleteItemMutation.isError}
             onRetry={() => {
               void notesQuery.refetch();
@@ -522,6 +547,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
             onArchive={(item) => archiveItemMutation.mutate(item.id)}
             onPurchase={(item) => classifyItem(item, "purchase")}
+            onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "purchase" ? (
@@ -542,6 +568,39 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             deleteError={deleteItemMutation.isError}
             onRetry={() => {
               void purchaseQuery.refetch();
+            }}
+            onStartEditing={startEditing}
+            onEditDraftChange={(value) => {
+              setEditDraft(value);
+
+              if (editError) {
+                setEditError(null);
+              }
+            }}
+            onCancelEditing={cancelEditing}
+            onSaveEditing={saveEditing}
+            onMoveToInbox={(item) => classifyItem(item, "inbox")}
+            onArchive={(item) => archiveItemMutation.mutate(item.id)}
+            onDeleteRequest={openDeleteConfirmation}
+          />
+        ) : activeView === "print-queue" ? (
+          <PrintQueueView
+            items={printQueueQuery.data ?? []}
+            notesCount={printQueueQuery.isSuccess ? printQueueQuery.data.length : null}
+            isPending={printQueueQuery.isPending}
+            isError={printQueueQuery.isError}
+            isSuccess={printQueueQuery.isSuccess}
+            isFetching={printQueueQuery.isFetching}
+            editingItemId={editingItemId}
+            editDraft={editDraft}
+            editError={editError}
+            isUpdating={updateItemMutation.isPending}
+            isDeleting={deleteItemMutation.isPending}
+            isMovingToInbox={classifyItemMutation.isPending}
+            isArchiving={archiveItemMutation.isPending}
+            deleteError={deleteItemMutation.isError}
+            onRetry={() => {
+              void printQueueQuery.refetch();
             }}
             onStartEditing={startEditing}
             onEditDraftChange={(value) => {

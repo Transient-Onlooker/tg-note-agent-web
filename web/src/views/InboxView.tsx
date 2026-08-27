@@ -26,6 +26,7 @@ type InboxViewProps = {
   isClassifying: boolean;
   isArchiving: boolean;
   isPurchasing: boolean;
+  isSendingToPrintQueue: boolean;
 
   onDraftChange: (value: string) => void;
   onCreate: () => void;
@@ -38,6 +39,7 @@ type InboxViewProps = {
   onClassify: (item: Item) => void;
   onArchive: (item: Item) => void;
   onPurchase: (item: Item) => void;
+  onSendToPrintQueue: (item: Item) => void;
 
   onDeleteRequest: (item: Item) => void;
 };
@@ -61,6 +63,7 @@ export function InboxView({
   isClassifying,
   isArchiving,
   isPurchasing,
+  isSendingToPrintQueue,
   onDraftChange,
   onCreate,
   onRetry,
@@ -71,6 +74,7 @@ export function InboxView({
   onClassify,
   onArchive,
   onPurchase,
+  onSendToPrintQueue,
   onDeleteRequest,
 }: InboxViewProps) {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -320,6 +324,18 @@ export function InboxView({
                   onClick={() => onPurchase(item)}
                 >
                   <Icon name="purchase" size={16} />
+                </button>
+              )}
+
+              {editingItemId !== item.id && (
+                <button
+                  className="note-card__print-queue"
+                  type="button"
+                  aria-label="Print Queue로 이동"
+                  disabled={isSendingToPrintQueue}
+                  onClick={() => onSendToPrintQueue(item)}
+                >
+                  <Icon name="print-queue" size={16} />
                 </button>
               )}
 
