@@ -55,6 +55,18 @@ export type UpdateItemInput = {
   due_at?: string | null;
 };
 
+export const itemQueryKeys = {
+  all: ["items"] as const,
+  list: (filters: ItemFilters = {}) =>
+    ["items", {
+      kind: filters.kind ?? null,
+      status: filters.status ?? null,
+      projectId: filters.projectId ?? null,
+      dueFrom: filters.dueFrom ?? null,
+      dueTo: filters.dueTo ?? null,
+    }] as const,
+};
+
 function buildItemsUrl(filters: ItemFilters) {
   const params = new URLSearchParams();
 

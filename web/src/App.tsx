@@ -10,10 +10,11 @@ import {
 import {
   createItem,
   deleteItem,
-  getItems,
+  itemQueryKeys,
+  listItems,
   listTrash,
   restoreItem,
-  updateItem,
+  updateItemFields,
   type Item,
 } from "./api/items";
 import {
@@ -32,6 +33,7 @@ import { DeleteConfirmModal } from "./components/DeleteConfirmModal";
 import { PlaceholderView } from "./views/PlaceholderView";
 import { TrashView } from "./views/TrashView";
 import { InboxView } from "./views/InboxView";
+import { NotesView } from "./views/NotesView";
 import "./App.css";
 
 type AuthStatus = "checking" | "locked" | "authenticated";
@@ -136,9 +138,18 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const queryClient = useQueryClient();
   useRealtimeSync(queryClient);
 
+  const inboxFilters = { kind: "inbox" as const, status: "active" as const };
+  const notesFilters = { kind: "note" as const, status: "active" as const };
+
   const itemsQuery = useQuery({
-    queryKey: ["items"],
-    queryFn: getItems,
+    queryKey: itemQueryKeys.list(inboxFilters),
+    queryFn: () => listItems(inboxFilters),
+  });
+
+  const notesQuery = useQuery({
+    queryKey: itemQueryKeys.list(notesFilters),
+    queryFn: () => listItems({ kind: "note", status: "active" }),
+    enabled: activeView === "notes",
   });
 
   const trashQuery = useQuery({
@@ -151,7 +162,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     mutationFn: createItem,
     onSuccess: async () => {
       setDraft("");
-      await queryClient.invalidateQueries({ queryKey: ["items"] });
+      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
     },
   });
 
@@ -159,25 +170,57 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     mutationFn: deleteItem,
     onSuccess: async () => {
       setDeleteTarget(null);
-      await queryClient.invalidateQueries({ queryKey: ["items"] });
+      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      await queryClient.invalidateQueries({ queryKey: ["trash"] });
     },
   });
 
   const updateItemMutation = useMutation({
     mutationFn: ({ id, body }: { id: string; body: string }) =>
-      updateItem(id, body),
-    onSuccess: (updatedItem: Item) => {
-      queryClient.setQueryData<Item[]>(["items"], (items) =>
-        items?.map((item) =>
-          item.id === updatedItem.id ? updatedItem : item,
-        ),
+      updateItemFields(id, { body }),
+    onSuccess: async (updatedItem: Item) => {
+      queryClient.setQueriesData<Item[]>(
+        { queryKey: itemQueryKeys.all },
+        (items) =>
+          items?.map((item) =>
+            item.id === updatedItem.id ? updatedItem : item,
+          ),
       );
+      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
       setEditingItemId(null);
       setEditDraft("");
       setEditError(null);
     },
     onError: () => {
       setEditError("수정하지 못했습니다.");
+    },
+  });
+
+  const classifyItemMutation = useMutation({
+    mutationFn: ({ id, kind }: { id: string; kind: "inbox" | "note" }) =>
+      updateItemFields(id, { kind }),
+    onSuccess: async (updatedItem: Item) => {
+      queryClient.setQueryData<Item[]>(
+        itemQueryKeys.list(inboxFilters),
+        (items) =>
+          updatedItem.kind === "inbox"
+            ? [
+                updatedItem,
+                ...(items ?? []).filter((item) => item.id !== updatedItem.id),
+              ]
+            : items?.filter((item) => item.id !== updatedItem.id),
+      );
+      queryClient.setQueryData<Item[]>(
+        itemQueryKeys.list(notesFilters),
+        (items) =>
+          updatedItem.kind === "note"
+            ? [
+                updatedItem,
+                ...(items ?? []).filter((item) => item.id !== updatedItem.id),
+              ]
+            : items?.filter((item) => item.id !== updatedItem.id),
+      );
+      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
     },
   });
 
@@ -188,7 +231,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
         items?.filter((item) => item.id !== restoredItem.id),
       );
       setRestoreError(null);
-      await queryClient.invalidateQueries({ queryKey: ["items"] });
+      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      await queryClient.invalidateQueries({ queryKey: ["trash"] });
     },
     onError: () => {
       setRestoreError("복원하지 못했습니다.");
@@ -226,6 +270,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   }, [deleteItemMutation.isPending, deleteTarget]);
 
   const inboxCount = itemsQuery.isSuccess ? itemsQuery.data.length : null;
+  const notesCount = notesQuery.isSuccess ? notesQuery.data.length : null;
   const activeNavigationItem =
     navigationGroups
       .flatMap((group) => group.items)
@@ -294,6 +339,14 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     deleteItemMutation.mutate(deleteTarget.id);
   };
 
+  const classifyItem = (item: Item, kind: "inbox" | "note") => {
+    if (classifyItemMutation.isPending) {
+      return;
+    }
+
+    classifyItemMutation.mutate({ id: item.id, kind });
+  };
+
   return (
     <>
       <AppShell
@@ -327,6 +380,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             editDraft={editDraft}
             editError={editError}
             isUpdating={updateItemMutation.isPending}
+            isClassifying={classifyItemMutation.isPending}
             onDraftChange={(value) => {
               setDraft(value);
 
@@ -348,6 +402,38 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             }}
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
+            onClassify={(item) => classifyItem(item, "note")}
+            onDeleteRequest={openDeleteConfirmation}
+          />
+        ) : activeView === "notes" ? (
+          <NotesView
+            items={notesQuery.data ?? []}
+            notesCount={notesCount}
+            isPending={notesQuery.isPending}
+            isError={notesQuery.isError}
+            isSuccess={notesQuery.isSuccess}
+            isFetching={notesQuery.isFetching}
+            editingItemId={editingItemId}
+            editDraft={editDraft}
+            editError={editError}
+            isUpdating={updateItemMutation.isPending}
+            isDeleting={deleteItemMutation.isPending}
+            isMovingToInbox={classifyItemMutation.isPending}
+            deleteError={deleteItemMutation.isError}
+            onRetry={() => {
+              void notesQuery.refetch();
+            }}
+            onStartEditing={startEditing}
+            onEditDraftChange={(value) => {
+              setEditDraft(value);
+
+              if (editError) {
+                setEditError(null);
+              }
+            }}
+            onCancelEditing={cancelEditing}
+            onSaveEditing={saveEditing}
+            onMoveToInbox={(item) => classifyItem(item, "inbox")}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "trash" ? (
