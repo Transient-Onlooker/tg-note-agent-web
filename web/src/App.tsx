@@ -26,8 +26,9 @@ import {
 } from "./api/auth";
 import { useRealtimeSync } from "./realtime";
 import { navigationGroups, type ViewId } from "./config/navigation";
-import { Icon } from "./components/Icon";
 import { LockedScreen } from "./components/LockedScreen";
+import { AppShell } from "./components/AppShell";
+import { DeleteConfirmModal } from "./components/DeleteConfirmModal";
 import { PlaceholderView } from "./views/PlaceholderView";
 import { TrashView } from "./views/TrashView";
 import { InboxView } from "./views/InboxView";
@@ -295,212 +296,89 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
 
   return (
     <>
-      <div className="app-shell">
-      <button
-        type="button"
-        className={`sidebar-overlay${isSidebarOpen ? " is-visible" : ""}`}
-        onClick={() => setIsSidebarOpen(false)}
-        aria-label="메뉴 닫기"
-        tabIndex={isSidebarOpen ? 0 : -1}
-      />
-
-      <aside
-        id="app-navigation"
-        className={`sidebar${isSidebarOpen ? " is-open" : ""}`}
+      <AppShell
+        activeView={activeView}
+        isSidebarOpen={isSidebarOpen}
+        inboxCount={inboxCount}
+        trashCount={
+          trashQuery.isSuccess
+            ? trashQuery.data.length
+            : null
+        }
+        onNavigate={handleNavigation}
+        onOpenSidebar={() => setIsSidebarOpen(true)}
+        onCloseSidebar={() => setIsSidebarOpen(false)}
+        onLock={onLock}
       >
-        <div className="sidebar__top">
-          <div className="brand">
-            <span className="brand__mark" aria-hidden="true">
-              <span className="material-symbols-outlined">orthopedics</span>
-            </span>
-            <div>
-              <strong>NoteRelay</strong>
-              <span>Personal notes</span>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="sidebar-close"
-            onClick={() => setIsSidebarOpen(false)}
-            aria-label="메뉴 닫기"
-          >
-            <Icon name="close" size={20} />
-          </button>
-        </div>
+        {activeView === "inbox" ? (
+          <InboxView
+            items={itemsQuery.data ?? []}
+            inboxCount={inboxCount}
+            isPending={itemsQuery.isPending}
+            isError={itemsQuery.isError}
+            isSuccess={itemsQuery.isSuccess}
+            isFetching={itemsQuery.isFetching}
+            draft={draft}
+            isCreating={createItemMutation.isPending}
+            createError={createItemMutation.isError}
+            deleteError={deleteItemMutation.isError}
+            isDeleting={deleteItemMutation.isPending}
+            editingItemId={editingItemId}
+            editDraft={editDraft}
+            editError={editError}
+            isUpdating={updateItemMutation.isPending}
+            onDraftChange={(value) => {
+              setDraft(value);
 
-        <nav className="sidebar-nav" aria-label="주요 메뉴">
-          {navigationGroups.map((group) => (
-            <div className="nav-group" key={group.label}>
-              <p className="nav-group__label">{group.label}</p>
-              <div className="nav-group__items">
-                {group.items.map((item) => (
-                  <button
-                    type="button"
-                    className={`nav-item${activeView === item.id ? " is-active" : ""}`}
-                    onClick={() => handleNavigation(item.id)}
-                    aria-current={activeView === item.id ? "page" : undefined}
-                    key={item.id}
-                  >
-                    <Icon name={item.id} size={18} />
-                    <span>{item.label}</span>
-                      {item.id === "inbox" && inboxCount !== null && (
-                        <span className="nav-item__count">{inboxCount}</span>
-                      )}
-                      {item.id === "trash" && trashQuery.isSuccess && (
-                        <span className="nav-item__count">
-                          {trashQuery.data.length}
-                        </span>
-                      )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </nav>
+              if (createItemMutation.isError) {
+                createItemMutation.reset();
+              }
+            }}
+            onCreate={submitDraft}
+            onRetry={() => {
+              void itemsQuery.refetch();
+            }}
+            onStartEditing={startEditing}
+            onEditDraftChange={(value) => {
+              setEditDraft(value);
 
-        <div className="sidebar__footer">
-          <span className="workspace-avatar" aria-hidden="true">N</span>
-          <div>
-            <strong>Personal workspace</strong>
-            <span>Capture, then organize</span>
-          </div>
-          <button type="button" className="lock-button" onClick={onLock}>
-            <Icon name="lock" size={15} />
-            <span>잠금</span>
-          </button>
-        </div>
-      </aside>
-
-      <div className="workspace">
-        <header className="mobile-topbar">
-          <button
-            type="button"
-            className="menu-button"
-            onClick={() => setIsSidebarOpen(true)}
-            aria-label="메뉴 열기"
-            aria-expanded={isSidebarOpen}
-            aria-controls="app-navigation"
-          >
-            <Icon name="menu" size={21} />
-          </button>
-          <div className="mobile-brand">
-            <span className="mobile-brand__mark">
-              <span className="material-symbols-outlined">orthopedics</span>
-            </span>
-            <strong>NoteRelay</strong>
-          </div>
-          {inboxCount !== null ? (
-            <span className="mobile-count">{inboxCount}</span>
-          ) : (
-            <span className="mobile-count mobile-count--empty" />
-          )}
-        </header>
-
-        <main className="workspace__content">
-            {activeView === "inbox"
-              ? <InboxView
-                    items={itemsQuery.data ?? []}
-                    inboxCount={inboxCount}
-                    isPending={itemsQuery.isPending}
-                    isError={itemsQuery.isError}
-                    isSuccess={itemsQuery.isSuccess}
-                    isFetching={itemsQuery.isFetching}
-                    draft={draft}
-                    isCreating={createItemMutation.isPending}
-                    createError={createItemMutation.isError}
-                    deleteError={deleteItemMutation.isError}
-                    isDeleting={deleteItemMutation.isPending}
-                    editingItemId={editingItemId}
-                    editDraft={editDraft}
-                    editError={editError}
-                    isUpdating={updateItemMutation.isPending}
-                    onDraftChange={(value) => {
-                      setDraft(value);
-
-                      if (createItemMutation.isError) {
-                        createItemMutation.reset();
-                      }
-                    }}
-                    onCreate={submitDraft}
-                    onRetry={() => {
-                      void itemsQuery.refetch();
-                    }}
-                    onStartEditing={startEditing}
-                    onEditDraftChange={(value) => {
-                      setEditDraft(value);
-
-                      if (editError) {
-                        setEditError(null);
-                      }
-                    }}
-                    onCancelEditing={cancelEditing}
-                    onSaveEditing={saveEditing}
-                    onDeleteRequest={openDeleteConfirmation}
-                  />
-              : activeView === "trash"
-                ? <TrashView
-                    items={trashQuery.data ?? []}
-                    isPending={trashQuery.isPending}
-                    isError={trashQuery.isError}
-                    isSuccess={trashQuery.isSuccess}
-                    restoreError={restoreError}
-                    isRestoring={restoreItemMutation.isPending}
-                    onRetry={() => {
-                      void trashQuery.refetch();
-                    }}
-                    onRestore={(id) => {
-                      setRestoreError(null);
-                      restoreItemMutation.mutate(id);
-                    }}
-                  />
-                : <PlaceholderView
-                    item={activeNavigationItem}
-                    onGoInbox={() => handleNavigation("inbox")}
-                  />}
-        </main>
-      </div>
-      </div>
+              if (editError) {
+                setEditError(null);
+              }
+            }}
+            onCancelEditing={cancelEditing}
+            onSaveEditing={saveEditing}
+            onDeleteRequest={openDeleteConfirmation}
+          />
+        ) : activeView === "trash" ? (
+          <TrashView
+            items={trashQuery.data ?? []}
+            isPending={trashQuery.isPending}
+            isError={trashQuery.isError}
+            isSuccess={trashQuery.isSuccess}
+            restoreError={restoreError}
+            isRestoring={restoreItemMutation.isPending}
+            onRetry={() => {
+              void trashQuery.refetch();
+            }}
+            onRestore={(id) => {
+              setRestoreError(null);
+              restoreItemMutation.mutate(id);
+            }}
+          />
+        ) : (
+          <PlaceholderView
+            item={activeNavigationItem}
+            onGoInbox={() => handleNavigation("inbox")}
+          />
+        )}
+      </AppShell>
       {deleteTarget && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onClick={closeDeleteConfirmation}
-        >
-          <section
-            className="confirm-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="delete-confirm-title"
-            aria-describedby="delete-confirm-description"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="confirm-modal__icon" aria-hidden="true">
-              <Icon name="delete" size={20} />
-            </div>
-            <h2 id="delete-confirm-title">이 메모를 삭제할까요?</h2>
-            <p id="delete-confirm-description">
-              삭제된 메모는 휴지통으로 이동합니다.
-            </p>
-            <div className="confirm-modal__actions">
-              <button
-                className="confirm-modal__cancel"
-                type="button"
-                onClick={closeDeleteConfirmation}
-                disabled={deleteItemMutation.isPending}
-              >
-                취소
-              </button>
-              <button
-                className="confirm-modal__delete"
-                type="button"
-                onClick={confirmDelete}
-                disabled={deleteItemMutation.isPending}
-              >
-                {deleteItemMutation.isPending ? "삭제 중..." : "삭제"}
-              </button>
-            </div>
-          </section>
-        </div>
+        <DeleteConfirmModal
+          isPending={deleteItemMutation.isPending}
+          onCancel={closeDeleteConfirmation}
+          onConfirm={confirmDelete}
+        />
       )}
     </>
   );
