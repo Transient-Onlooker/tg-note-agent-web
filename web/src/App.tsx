@@ -29,6 +29,7 @@ import { useRealtimeSync } from "./realtime";
 import { navigationGroups, type ViewId } from "./config/navigation";
 import { Icon } from "./components/Icon";
 import { LockedScreen } from "./components/LockedScreen";
+import { PlaceholderView } from "./views/PlaceholderView";
 import { formatCreatedAt } from "./utils/date";
 import "./App.css";
 
@@ -610,32 +611,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     </section>
   );
 
-  const renderPlaceholder = () => (
-    <section className="placeholder-view" aria-labelledby="placeholder-title">
-      <header className="view-header">
-        <div>
-          <p className="eyebrow">Workspace</p>
-          <div className="view-title-row">
-            <h1 id="placeholder-title">{activeNavigationItem.label}</h1>
-            <span className="soon-pill">준비 중</span>
-          </div>
-          <p className="view-description">{activeNavigationItem.description}</p>
-        </div>
-      </header>
-
-      <div className="placeholder-card">
-        <span className="placeholder-card__icon">
-          <Icon name={activeNavigationItem.id} size={28} />
-        </span>
-        <h2>{activeNavigationItem.label}</h2>
-        <p>이 화면은 아직 준비 중입니다. 현재는 Inbox에서 메모를 관리해 주세요.</p>
-        <button type="button" onClick={() => handleNavigation("inbox")}>
-          Inbox로 돌아가기
-        </button>
-      </div>
-    </section>
-  );
-
   return (
     <>
       <div className="app-shell">
@@ -744,7 +719,10 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
               ? renderInbox()
               : activeView === "trash"
                 ? renderTrash()
-                : renderPlaceholder()}
+                : <PlaceholderView
+                    item={activeNavigationItem}
+                    onGoInbox={() => handleNavigation("inbox")}
+                  />}
         </main>
       </div>
       </div>
