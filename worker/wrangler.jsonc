@@ -11,5 +11,21 @@
       "database_id": "e940728c-0f0f-4ef0-bb63-eb20ddcee40f",
       "migrations_dir": "../migrations"
     }
-  ]
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "REALTIME_HUB",
+        "class_name": "RealtimeHub"
+      }
+    ]
+  },
+
+  "exports": {
+    "RealtimeHub": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
 }

@@ -26,6 +26,7 @@ import {
   setAccessKey,
   validateAccessKey,
 } from "./api/auth";
+import { useRealtimeSync } from "./realtime";
 import "./App.css";
 
 type ViewId =
@@ -424,6 +425,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
   const queryClient = useQueryClient();
+  useRealtimeSync(queryClient);
 
   const itemsQuery = useQuery({
     queryKey: ["items"],

@@ -4,6 +4,11 @@ import {
   processTelegramUpdate,
   type TelegramUpdate,
 } from "./services/telegram";
+import {
+  broadcastRealtime,
+} from "./services/realtime";
+
+export { RealtimeHub } from "./services/realtime";
 
 type Bindings = {
   DB: D1Database;
@@ -11,6 +16,7 @@ type Bindings = {
   TELEGRAM_WEBHOOK_SECRET: string;
   TELEGRAM_ALLOWED_USER_ID: string;
   WEB_API_TOKEN: string;
+  REALTIME_HUB: DurableObjectNamespace;
 };
 
 type CreateItemRequest = {
@@ -23,6 +29,26 @@ type UpdateItemRequest = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
+const allowedOrigins = new Set([
+  "http://localhost:5173",
+  "https://transient-onlooker.github.io",
+]);
+
+app.get("/ws", async (c) => {
+  const origin = c.req.header("Origin");
+
+  if (origin && !allowedOrigins.has(origin)) {
+    return c.text("Forbidden", 403);
+  }
+
+  if (c.req.header("Upgrade")?.toLowerCase() !== "websocket") {
+    return c.text("Upgrade Required", 426);
+  }
+
+  const id = c.env.REALTIME_HUB.idFromName("global");
+  return c.env.REALTIME_HUB.get(id).fetch(c.req.raw);
+});
+
 app.use(
   "/api/*",
   cors({
@@ -31,7 +57,7 @@ app.use(
       "https://transient-onlooker.github.io",
     ],
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-  allowHeaders: ["Authorization", "Content-Type"],
+    allowHeaders: ["Authorization", "Content-Type"],
   }),
 );
 
@@ -195,6 +221,13 @@ app.post("/api/items", async (c) => {
     );
   }
 
+  c.executionCtx.waitUntil(
+    broadcastRealtime(c.env, {
+      type: "item_created",
+      item_id: itemId,
+    }),
+  );
+
   return c.json(
     {
       item: {
@@ -280,6 +313,13 @@ app.patch("/api/items/:id", async (c) => {
     .bind(c.req.param("id"))
     .first();
 
+  c.executionCtx.waitUntil(
+    broadcastRealtime(c.env, {
+      type: "item_updated",
+      item_id: c.req.param("id"),
+    }),
+  );
+
   return c.json({ item });
 });
 
@@ -328,6 +368,13 @@ app.post("/api/items/:id/restore", async (c) => {
     .bind(c.req.param("id"))
     .first();
 
+  c.executionCtx.waitUntil(
+    broadcastRealtime(c.env, {
+      type: "item_restored",
+      item_id: c.req.param("id"),
+    }),
+  );
+
   return c.json({ item });
 });
 
@@ -354,6 +401,13 @@ app.delete("/api/items/:id", async (c) => {
       404,
     );
   }
+
+  c.executionCtx.waitUntil(
+    broadcastRealtime(c.env, {
+      type: "item_deleted",
+      item_id: c.req.param("id"),
+    }),
+  );
 
   return c.json({ ok: true });
 });

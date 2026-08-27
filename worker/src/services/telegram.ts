@@ -1,3 +1,5 @@
+import { broadcastRealtime } from "./realtime";
+
 export type TelegramUpdate = {
   update_id: number;
   message?: {
@@ -17,6 +19,7 @@ type TelegramEnvironment = {
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_WEBHOOK_SECRET: string;
   TELEGRAM_ALLOWED_USER_ID: string;
+  REALTIME_HUB: DurableObjectNamespace;
 };
 
 type TelegramMessage = NonNullable<TelegramUpdate["message"]> & {
@@ -189,6 +192,11 @@ export async function processTelegramUpdate(
     await sendTelegramReaction(env, message);
     return "duplicate";
   }
+
+  await broadcastRealtime(env, {
+    type: "item_created",
+    item_id: itemId,
+  });
 
   await sendTelegramReaction(env, message);
   return "stored";
