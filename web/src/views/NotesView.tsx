@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { Item } from "../api/items";
 import { CardActionButton } from "../components/CardActionButton";
 import { Icon } from "../components/Icon";
@@ -9,6 +9,7 @@ type NotesViewProps = {
   viewDescription?: string;
   emptyDescription?: string;
   items: Item[];
+  overdueItems?: Item[];
   notesCount: number | null;
   isPending: boolean;
   isError: boolean;
@@ -24,6 +25,7 @@ type NotesViewProps = {
   onEditDraftChange: (value: string) => void;
   onCancelEditing: () => void;
   onSaveEditing: () => void;
+  onMoveToNotes?: (item: Item) => Promise<unknown>;
   onMoveToInbox?: (item: Item) => Promise<unknown>;
   onArchive: (item: Item) => Promise<unknown>;
   onPurchase?: (item: Item) => Promise<unknown>;
@@ -38,6 +40,7 @@ export function NotesView({
   viewDescription = "Keep your organized notes in one place.",
   emptyDescription = "Inbox의 메모를 Notes로 분류해 보세요.",
   items,
+  overdueItems,
   notesCount,
   isPending,
   isError,
@@ -53,6 +56,7 @@ export function NotesView({
   onEditDraftChange,
   onCancelEditing,
   onSaveEditing,
+  onMoveToNotes,
   onMoveToInbox,
   onArchive,
   onPurchase,
@@ -62,6 +66,9 @@ export function NotesView({
   onClearDue,
 }: NotesViewProps) {
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+  const overdueItemIds = new Set(overdueItems?.map((item) => item.id));
+  const displayItems = overdueItems ? [...overdueItems, ...items] : items;
+  const overdueCount = overdueItems?.length ?? 0;
 
   return (
     <section className="notes-view" aria-labelledby="notes-title">
@@ -129,7 +136,7 @@ export function NotesView({
           </div>
         )}
 
-        {isSuccess && items.length === 0 && (
+        {isSuccess && displayItems.length === 0 && (
           <div className="state-panel state-panel--empty">
             <span className="state-panel__icon">
               <Icon name="notes" size={24} />
@@ -142,12 +149,24 @@ export function NotesView({
         )}
 
         {isSuccess &&
-          items.map((item) => (
+          displayItems.map((item, index) => (
+            <Fragment key={item.id}>
+            {overdueCount > 0 && index === 0 && (
+              <div className="today-section-heading">
+                <h3>기한 지남</h3>
+                <span>{overdueCount}개</span>
+              </div>
+            )}
+            {overdueCount > 0 && index === overdueCount && (
+              <div className="today-section-heading">
+                <h3>오늘</h3>
+                <span>{items.length}개</span>
+              </div>
+            )}
             <article
               className={`note-card${
                 editingItemId === item.id ? " note-card--editing" : ""
               }`}
-              key={item.id}
             >
               <span className="note-card__marker" aria-hidden="true">
                 <Icon name="notes" size={18} />
@@ -222,6 +241,15 @@ export function NotesView({
                   >
                     <Icon name="edit" size={16} />
                   </CardActionButton>
+                  {onMoveToNotes && (
+                    <CardActionButton
+                      className="note-card__classify"
+                      aria-label="Notes로 이동"
+                      onClick={() => onMoveToNotes(item)}
+                    >
+                      <Icon name="notes" size={16} />
+                    </CardActionButton>
+                  )}
                   {onMoveToInbox && (
                     <CardActionButton
                       className="note-card__classify"
@@ -249,9 +277,9 @@ export function NotesView({
                       <Icon name="print-queue" size={16} />
                     </CardActionButton>
                   )}
-                  {onSetToday && (
+                  {onSetToday && (!overdueItems || overdueItemIds.has(item.id)) && (
                     <CardActionButton
-                      className="note-card__today"
+                      className="note-card__today note-card__today-defer"
                       aria-label="오늘로 지정"
                       onClick={() => onSetToday(item)}
                     >
@@ -260,7 +288,7 @@ export function NotesView({
                   )}
                   {onClearDue && (
                     <CardActionButton
-                      className="note-card__today"
+                    className="note-card__today note-card__today-clear"
                       aria-label="기한 제거"
                       onClick={() => onClearDue(item)}
                     >
@@ -287,6 +315,7 @@ export function NotesView({
                 </div>
               </div>
             </article>
+            </Fragment>
           ))}
       </div>
     </section>

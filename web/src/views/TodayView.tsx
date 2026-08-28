@@ -3,7 +3,7 @@ import { NotesView } from "./NotesView";
 
 type TodayViewProps = Omit<
   ComponentProps<typeof NotesView>,
-  "viewTitle" | "viewDescription" | "emptyDescription" | "onPurchase" | "isPurchasing" | "onSendToPrintQueue" | "isSendingToPrintQueue" | "onSetToday" | "isSettingToday"
+  "viewTitle" | "viewDescription" | "emptyDescription" | "isPurchasing" | "isSendingToPrintQueue" | "isSettingToday"
 >;
 
 export function TodayView(props: TodayViewProps) {

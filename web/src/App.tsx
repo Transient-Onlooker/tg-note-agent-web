@@ -40,7 +40,11 @@ import { ArchiveView } from "./views/ArchiveView";
 import { PurchaseView } from "./views/PurchaseView";
 import { PrintQueueView } from "./views/PrintQueueView";
 import { TodayView } from "./views/TodayView";
-import { getTodayRange } from "./utils/date";
+import {
+  getLocalDateKey,
+  getMillisecondsUntilNextLocalDay,
+  getTodayRange,
+} from "./utils/date";
 import "./App.css";
 
 type AuthStatus = "checking" | "locked" | "authenticated";
@@ -144,6 +148,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
+  const [localDateKey, setLocalDateKey] = useState(() => getLocalDateKey());
   const queryClient = useQueryClient();
   useRealtimeSync(queryClient);
 
@@ -157,12 +162,19 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     return () => window.clearTimeout(timeoutId);
   }, [actionFeedback]);
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setLocalDateKey(getLocalDateKey());
+    }, getMillisecondsUntilNextLocalDay() + 50);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [localDateKey]);
+
   const todayRange = getTodayRange();
   const inboxFilters = { kind: "inbox" as const, status: "active" as const };
   const notesFilters = { kind: "note" as const, status: "active" as const };
   const todayFilters = {
     status: "active" as const,
-    dueFrom: todayRange.dueFrom,
     dueTo: todayRange.dueTo,
   };
 
@@ -181,7 +193,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     queryKey: itemQueryKeys.list(todayFilters),
     queryFn: () => listItems({
       status: "active",
-      dueFrom: todayRange.dueFrom,
       dueTo: todayRange.dueTo,
     }),
     enabled: activeView === "today",
@@ -279,16 +290,15 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
           ),
       );
 
-      const isDueToday =
+      const isDueForTodayView =
         updatedItem.status === "active" &&
         updatedItem.due_at !== null &&
-        updatedItem.due_at >= todayRange.dueFrom &&
         updatedItem.due_at < todayRange.dueTo;
 
       queryClient.setQueryData<Item[]>(
         itemQueryKeys.list(todayFilters),
         (items) =>
-          isDueToday
+          isDueForTodayView
             ? [
                 updatedItem,
                 ...(items ?? []).filter((item) => item.id !== updatedItem.id),
@@ -470,6 +480,12 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const inboxCount = itemsQuery.isSuccess ? itemsQuery.data.length : null;
   const notesCount = notesQuery.isSuccess ? notesQuery.data.length : null;
   const todayCount = todayQuery.isSuccess ? todayQuery.data.length : null;
+  const todayItems = todayQuery.data?.filter(
+    (item) => item.due_at !== null && item.due_at >= todayRange.dueFrom,
+  ) ?? [];
+  const overdueItems = todayQuery.data?.filter(
+    (item) => item.due_at !== null && item.due_at < todayRange.dueFrom,
+  ) ?? [];
   const archiveCount = archiveQuery.isSuccess ? archiveQuery.data.length : null;
   const activeNavigationItem =
     navigationGroups
@@ -643,7 +659,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
           />
         ) : activeView === "today" ? (
           <TodayView
-            items={todayQuery.data ?? []}
+            items={todayItems}
+            overdueItems={overdueItems}
             notesCount={todayCount}
             isPending={todayQuery.isPending}
             isError={todayQuery.isError}
@@ -668,6 +685,10 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
             onClearDue={clearItemDue}
+            onMoveToNotes={(item) => classifyItem(item, "note")}
+            onPurchase={(item) => classifyItem(item, "purchase")}
+            onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
+            onSetToday={setItemDueToday}
             onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
             onDeleteRequest={openDeleteConfirmation}
           />
