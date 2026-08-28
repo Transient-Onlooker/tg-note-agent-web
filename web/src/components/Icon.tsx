@@ -75,6 +75,12 @@ const iconPaths: Record<IconName, ReactNode> = {
       <path d="m9 7 .75-2.25h4.5L15 7M7 7l.75 13h8.5L17 7" />
     </>
   ),
+  todo: (
+    <>
+      <path d="M5 12.5 9 16l10-10" />
+      <path d="M4 4h16v16H4z" />
+    </>
+  ),
   trash: (
     <>
       <path d="M5 7h14M9 7V5h6v2M7 7l.75 13h8.5L17 7" />

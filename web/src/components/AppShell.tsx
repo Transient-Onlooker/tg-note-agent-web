@@ -9,6 +9,7 @@ type AppShellProps = {
   activeView: ViewId;
   isSidebarOpen: boolean;
   inboxCount: number | null;
+  todoCount: number | null;
   trashCount: number | null;
   onNavigate: (view: ViewId) => void;
   onOpenSidebar: () => void;
@@ -21,6 +22,7 @@ export function AppShell({
   activeView,
   isSidebarOpen,
   inboxCount,
+  todoCount,
   trashCount,
   onNavigate,
   onOpenSidebar,
@@ -93,6 +95,12 @@ export function AppShell({
                           {inboxCount}
                         </span>
                       )}
+
+                    {item.id === "todo" && todoCount !== null && (
+                      <span className="nav-item__count">
+                        {todoCount}
+                      </span>
+                    )}
 
                     {item.id === "trash" &&
                       trashCount !== null && (

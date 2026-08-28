@@ -2,7 +2,10 @@ import { useState, type FormEvent } from "react";
 import type { Item } from "../api/items";
 import { CardActionButton } from "../components/CardActionButton";
 import { Icon } from "../components/Icon";
-import { formatCreatedAt } from "../utils/date";
+import {
+  formatCreatedAt,
+  getDateTimeInputValue,
+} from "../utils/date";
 
 type InboxViewProps = {
   items: Item[];
@@ -21,6 +24,7 @@ type InboxViewProps = {
 
   editingItemId: string | null;
   editDraft: string;
+  editDueAt: string;
   editError: string | null;
   isUpdating: boolean;
 
@@ -30,6 +34,7 @@ type InboxViewProps = {
 
   onStartEditing: (item: Item) => void;
   onEditDraftChange: (value: string) => void;
+  onEditDueChange: (value: string) => void;
   onCancelEditing: () => void;
   onSaveEditing: () => void;
   onClassify: (item: Item) => Promise<unknown>;
@@ -54,6 +59,7 @@ export function InboxView({
   deleteError,
   editingItemId,
   editDraft,
+  editDueAt,
   editError,
   isUpdating,
   onDraftChange,
@@ -61,6 +67,7 @@ export function InboxView({
   onRetry,
   onStartEditing,
   onEditDraftChange,
+  onEditDueChange,
   onCancelEditing,
   onSaveEditing,
   onClassify,
@@ -230,6 +237,22 @@ export function InboxView({
                       rows={4}
                       autoFocus
                     />
+
+                    <div className="note-card__due-editor">
+                      <label htmlFor={`inbox-due-${item.id}`}>마감</label>
+                      <input
+                        id={`inbox-due-${item.id}`}
+                        className="note-card__due-input"
+                        type="datetime-local"
+                        value={editDueAt}
+                        onChange={(event) => onEditDueChange(event.target.value)}
+                      />
+                      <div className="note-card__due-quick-actions">
+                        <button type="button" onClick={() => onEditDueChange(getDateTimeInputValue(0))}>오늘</button>
+                        <button type="button" onClick={() => onEditDueChange(getDateTimeInputValue(1))}>내일</button>
+                        <button type="button" onClick={() => onEditDueChange("")}>마감 없음</button>
+                      </div>
+                    </div>
 
                     {editError && (
                       <p className="note-card__edit-error" role="alert">

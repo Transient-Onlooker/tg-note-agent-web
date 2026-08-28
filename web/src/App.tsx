@@ -42,8 +42,10 @@ import { PrintQueueView } from "./views/PrintQueueView";
 import { TodayView } from "./views/TodayView";
 import {
   getLocalDateKey,
+  fromDateTimeInputValue,
   getMillisecondsUntilNextLocalDay,
   getTodayRange,
+  toDateTimeInputValue,
 } from "./utils/date";
 import "./App.css";
 
@@ -144,6 +146,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
+  const [editDueAt, setEditDueAt] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
@@ -172,8 +175,10 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
 
   const todayRange = getTodayRange();
   const inboxFilters = { kind: "inbox" as const, status: "active" as const };
+  const todoFilters = { kind: "task" as const, status: "active" as const };
   const notesFilters = { kind: "note" as const, status: "active" as const };
   const todayFilters = {
+    kind: "task" as const,
     status: "active" as const,
     dueTo: todayRange.dueTo,
   };
@@ -189,12 +194,15 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     enabled: activeView === "notes",
   });
 
+  const todoQuery = useQuery({
+    queryKey: itemQueryKeys.list(todoFilters),
+    queryFn: () => listItems(todoFilters),
+    enabled: activeView === "todo",
+  });
+
   const todayQuery = useQuery({
     queryKey: itemQueryKeys.list(todayFilters),
-    queryFn: () => listItems({
-      status: "active",
-      dueTo: todayRange.dueTo,
-    }),
+    queryFn: () => listItems(todayFilters),
     enabled: activeView === "today",
   });
 
@@ -269,6 +277,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
       setEditingItemId(null);
       setEditDraft("");
+      setEditDueAt("");
       setEditError(null);
       showActionFeedback("수정했습니다.");
     },
@@ -292,6 +301,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
 
       const isDueForTodayView =
         updatedItem.status === "active" &&
+        updatedItem.kind === "task" &&
         updatedItem.due_at !== null &&
         updatedItem.due_at < todayRange.dueTo;
 
@@ -314,7 +324,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   });
 
   const classifyItemMutation = useMutation({
-    mutationFn: ({ id, kind }: { id: string; kind: "inbox" | "note" | "purchase" | "print_job" }) =>
+    mutationFn: ({ id, kind }: { id: string; kind: "inbox" | "note" | "task" | "purchase" | "print_job" }) =>
       updateItemFields(id, { kind }),
     onSuccess: async (updatedItem: Item, variables) => {
       queryClient.setQueryData<Item[]>(
@@ -336,6 +346,16 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
                 ...(items ?? []).filter((item) => item.id !== updatedItem.id),
               ]
           : items?.filter((item) => item.id !== updatedItem.id),
+      );
+      queryClient.setQueryData<Item[]>(
+        itemQueryKeys.list(todoFilters),
+        (items) =>
+          updatedItem.kind === "task"
+            ? [
+                updatedItem,
+                ...(items ?? []).filter((item) => item.id !== updatedItem.id),
+              ]
+            : items?.filter((item) => item.id !== updatedItem.id),
       );
       queryClient.setQueryData<Item[]>(
         itemQueryKeys.list(purchaseFilters),
@@ -361,6 +381,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       const labels = {
         inbox: "Inbox",
         note: "Notes",
+        task: "Todo",
         purchase: "Purchase",
         print_job: "Print Queue",
       } as const;
@@ -395,6 +416,17 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       updatedItem.status === "active" && updatedItem.kind === "note",
     );
     updateList(
+      itemQueryKeys.list(todoFilters),
+      updatedItem.status === "active" && updatedItem.kind === "task",
+    );
+    updateList(
+      itemQueryKeys.list(todayFilters),
+      updatedItem.status === "active" &&
+        updatedItem.kind === "task" &&
+        updatedItem.due_at !== null &&
+        updatedItem.due_at < todayRange.dueTo,
+    );
+    updateList(
       itemQueryKeys.list(archiveFilters),
       updatedItem.status === "archived",
     );
@@ -407,6 +439,17 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       updatedItem.status === "active" && updatedItem.kind === "print_job",
     );
   };
+
+  const setItemTodayMutation = useMutation({
+    mutationFn: (id: string) =>
+      updateItemFields(id, { kind: "task", due_at: todayRange.dueFrom }),
+    onSuccess: async (updatedItem: Item) => {
+      syncStatusItemCache(updatedItem);
+      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      showActionFeedback("Todo / Today濡??대룞?덉뒿?덈떎.");
+    },
+    onError: () => showActionFeedback("Today濡??ㅼ젙?섏? 紐삵뻽?듬땲??", "error"),
+  });
 
   const archiveItemMutation = useMutation({
     mutationFn: (id: string) =>
@@ -481,11 +524,18 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const notesCount = notesQuery.isSuccess ? notesQuery.data.length : null;
   const todayCount = todayQuery.isSuccess ? todayQuery.data.length : null;
   const todayItems = todayQuery.data?.filter(
-    (item) => item.due_at !== null && item.due_at >= todayRange.dueFrom,
+    (item) =>
+      item.kind === "task" &&
+      item.due_at !== null &&
+      item.due_at >= todayRange.dueFrom,
   ) ?? [];
   const overdueItems = todayQuery.data?.filter(
-    (item) => item.due_at !== null && item.due_at < todayRange.dueFrom,
+    (item) =>
+      item.kind === "task" &&
+      item.due_at !== null &&
+      item.due_at < todayRange.dueFrom,
   ) ?? [];
+  const todoCount = todoQuery.isSuccess ? todoQuery.data.length : null;
   const archiveCount = archiveQuery.isSuccess ? archiveQuery.data.length : null;
   const activeNavigationItem =
     navigationGroups
@@ -513,6 +563,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     updateItemMutation.reset();
     setEditingItemId(item.id);
     setEditDraft(item.body);
+    setEditDueAt(toDateTimeInputValue(item.due_at));
     setEditError(null);
   };
 
@@ -520,6 +571,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     updateItemMutation.reset();
     setEditingItemId(null);
     setEditDraft("");
+    setEditDueAt("");
     setEditError(null);
   };
 
@@ -532,7 +584,10 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
 
     updateItemMutation.mutate({
       id: editingItemId,
-      input: { body: trimmedBody },
+      input: {
+        body: trimmedBody,
+        due_at: fromDateTimeInputValue(editDueAt),
+      },
     });
   };
 
@@ -555,7 +610,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     deleteItemMutation.mutate(deleteTarget.id);
   };
 
-  const classifyItem = (item: Item, kind: "inbox" | "note" | "purchase" | "print_job") =>
+  const classifyItem = (item: Item, kind: "inbox" | "note" | "task" | "purchase" | "print_job") =>
     classifyItemMutation.mutateAsync({ id: item.id, kind });
 
   const setItemDueToday = (item: Item) =>
@@ -564,12 +619,16 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const clearItemDue = (item: Item) =>
     updateDueMutation.mutateAsync({ id: item.id, dueAt: null });
 
+  const setItemTodayFromInbox = (item: Item) =>
+    setItemTodayMutation.mutateAsync(item.id);
+
   return (
     <>
       <AppShell
         activeView={activeView}
         isSidebarOpen={isSidebarOpen}
         inboxCount={inboxCount}
+        todoCount={todoCount}
         trashCount={
           trashQuery.isSuccess
             ? trashQuery.data.length
@@ -594,6 +653,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             deleteError={deleteItemMutation.isError}
             editingItemId={editingItemId}
             editDraft={editDraft}
+            editDueAt={editDueAt}
             editError={editError}
             isUpdating={updateItemMutation.isPending}
             onDraftChange={(value) => {
@@ -615,13 +675,14 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
                 setEditError(null);
               }
             }}
+            onEditDueChange={setEditDueAt}
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
             onClassify={(item) => classifyItem(item, "note")}
             onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
-            onSetToday={setItemDueToday}
+            onSetToday={setItemTodayFromInbox}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "notes" ? (
@@ -634,6 +695,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isFetching={notesQuery.isFetching}
             editingItemId={editingItemId}
             editDraft={editDraft}
+            editDueAt={editDueAt}
             editError={editError}
             isUpdating={updateItemMutation.isPending}
             deleteError={deleteItemMutation.isError}
@@ -648,6 +710,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
                 setEditError(null);
               }
             }}
+            onEditDueChange={setEditDueAt}
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
@@ -655,6 +718,46 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
             onSetToday={setItemDueToday}
+            onDeleteRequest={openDeleteConfirmation}
+          />
+        ) : activeView === "todo" ? (
+          <NotesView
+            viewTitle="Todo"
+            viewDescription="Active tasks that still need your attention."
+            emptyDescription="오늘로 지정하거나 Task로 분류한 메모가 여기에 표시됩니다."
+            items={todoQuery.data ?? []}
+            notesCount={todoCount}
+            isPending={todoQuery.isPending}
+            isError={todoQuery.isError}
+            isSuccess={todoQuery.isSuccess}
+            isFetching={todoQuery.isFetching}
+            editingItemId={editingItemId}
+            editDraft={editDraft}
+            editDueAt={editDueAt}
+            editError={editError}
+            isUpdating={updateItemMutation.isPending}
+            deleteError={deleteItemMutation.isError}
+            onRetry={() => {
+              void todoQuery.refetch();
+            }}
+            onStartEditing={startEditing}
+            onEditDraftChange={(value) => {
+              setEditDraft(value);
+
+              if (editError) {
+                setEditError(null);
+              }
+            }}
+            onEditDueChange={setEditDueAt}
+            onCancelEditing={cancelEditing}
+            onSaveEditing={saveEditing}
+            onMoveToInbox={(item) => classifyItem(item, "inbox")}
+            onMoveToNotes={(item) => classifyItem(item, "note")}
+            onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
+            onPurchase={(item) => classifyItem(item, "purchase")}
+            onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
+            onSetToday={setItemDueToday}
+            onClearDue={clearItemDue}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "today" ? (
@@ -668,6 +771,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isFetching={todayQuery.isFetching}
             editingItemId={editingItemId}
             editDraft={editDraft}
+            editDueAt={editDueAt}
             editError={editError}
             isUpdating={updateItemMutation.isPending}
             deleteError={deleteItemMutation.isError}
@@ -682,9 +786,11 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
                 setEditError(null);
               }
             }}
+            onEditDueChange={setEditDueAt}
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
             onClearDue={clearItemDue}
+            onMoveToInbox={(item) => classifyItem(item, "inbox")}
             onMoveToNotes={(item) => classifyItem(item, "note")}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
@@ -702,6 +808,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isFetching={purchaseQuery.isFetching}
             editingItemId={editingItemId}
             editDraft={editDraft}
+            editDueAt={editDueAt}
             editError={editError}
             isUpdating={updateItemMutation.isPending}
             deleteError={deleteItemMutation.isError}
@@ -716,6 +823,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
                 setEditError(null);
               }
             }}
+            onEditDueChange={setEditDueAt}
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
@@ -749,6 +857,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isFetching={archiveQuery.isFetching}
             editingItemId={editingItemId}
             editDraft={editDraft}
+            editDueAt={editDueAt}
             editError={editError}
             isUpdating={updateItemMutation.isPending}
             deleteError={deleteItemMutation.isError}
@@ -763,6 +872,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
                 setEditError(null);
               }
             }}
+            onEditDueChange={setEditDueAt}
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
             onRestore={(item) => restoreArchivedItemMutation.mutateAsync(item.id)}

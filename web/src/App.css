@@ -781,6 +781,55 @@
   gap: 10px;
 }
 
+.note-card__due-editor {
+  display: grid;
+  gap: 6px;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.note-card__due-input {
+  width: min(100%, 240px);
+  min-height: 32px;
+  padding: 6px 8px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+}
+
+.note-card__due-input:focus {
+  border-color: rgba(49, 91, 216, 0.52);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(49, 91, 216, 0.08);
+}
+
+.note-card__due-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.note-card__due-quick-actions button {
+  min-height: 28px;
+  padding: 4px 8px;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.note-card__due-quick-actions button:hover {
+  color: var(--accent);
+  border-color: rgba(49, 91, 216, 0.35);
+}
+
 .note-card__textarea {
   display: block;
   width: 100%;

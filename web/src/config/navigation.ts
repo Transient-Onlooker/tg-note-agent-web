@@ -1,5 +1,6 @@
 export type ViewId =
   | "inbox"
+  | "todo"
   | "today"
   | "notes"
   | "projects"
@@ -27,6 +28,11 @@ export const navigationGroups: NavigationGroup[] = [
         id: "inbox",
         label: "Inbox",
         description: "들어온 메모를 빠르게 확인하고 정리하는 공간입니다.",
+      },
+      {
+        id: "todo",
+        label: "Todo",
+        description: "Active tasks.",
       },
       {
         id: "today",
