@@ -53,6 +53,9 @@ import "./App.css";
 
 type AuthStatus = "checking" | "locked" | "authenticated";
 type ActionFeedback = { message: string; tone: "success" | "error" };
+type UpdateItemContext = {
+  snapshots: Array<[readonly unknown[], Item[] | undefined]>;
+};
 
 
 function App() {
@@ -280,6 +283,30 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const updateItemMutation = useMutation({
     mutationFn: ({ id, input }: { id: string; input: UpdateItemInput }) =>
       updateItemFields(id, input),
+    onMutate: async ({ id, input }) => {
+      await queryClient.cancelQueries({ queryKey: itemQueryKeys.all });
+      const snapshots = queryClient.getQueriesData<Item[]>({
+        queryKey: itemQueryKeys.all,
+      });
+      const optimisticUpdatedAt = new Date().toISOString();
+
+      queryClient.setQueriesData<Item[]>(
+        { queryKey: itemQueryKeys.all },
+        (items) =>
+          items?.map((item) =>
+            item.id === id
+              ? ({
+                  ...item,
+                  ...input,
+                  updated_at: optimisticUpdatedAt,
+                  version: item.version + 1,
+                } as Item)
+              : item,
+          ),
+      );
+
+      return { snapshots } satisfies UpdateItemContext;
+    },
     onSuccess: async (updatedItem: Item) => {
       queryClient.setQueriesData<Item[]>(
         { queryKey: itemQueryKeys.all },
@@ -295,7 +322,10 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       setEditError(null);
       showActionFeedback("수정했습니다.");
     },
-    onError: () => {
+    onError: (_error, _variables, context) => {
+      context?.snapshots.forEach(([queryKey, items]) => {
+        queryClient.setQueryData(queryKey, items);
+      });
       setEditError("수정하지 못했습니다.");
       showActionFeedback("수정하지 못했습니다.", "error");
     },
@@ -596,13 +626,18 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       return;
     }
 
-    updateItemMutation.mutate({
-      id: editingItemId,
-      input: {
-        body: trimmedBody,
-        due_at: fromDateTimeInputValue(editDueAt),
-      },
-    });
+    const itemId = editingItemId;
+    const input: UpdateItemInput = {
+      body: trimmedBody,
+      due_at: fromDateTimeInputValue(editDueAt),
+    };
+
+    setEditingItemId(null);
+    setEditDraft("");
+    setEditDueAt("");
+    setEditError(null);
+
+    updateItemMutation.mutate({ id: itemId, input });
   };
 
   const openDeleteConfirmation = (item: Item) => {
@@ -687,6 +722,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
             onClassify={(item) => classifyItem(item, "note")}
+            onMoveToTodo={(item) => classifyItem(item, "task")}
             onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
@@ -721,6 +757,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onEditDueChange={setEditDueAt}
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
+            onMoveToTodo={(item) => classifyItem(item, "task")}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
             onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
             onPurchase={(item) => classifyItem(item, "purchase")}
@@ -834,6 +871,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onEditDueChange={setEditDueAt}
             onCancelEditing={cancelEditing}
             onSaveEditing={saveEditing}
+            onMoveToTodo={(item) => classifyItem(item, "task")}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
             onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
             onDeleteRequest={openDeleteConfirmation}

@@ -38,6 +38,7 @@ type InboxViewProps = {
   onCancelEditing: () => void;
   onSaveEditing: () => void;
   onClassify: (item: Item) => Promise<unknown>;
+  onMoveToTodo: (item: Item) => Promise<unknown>;
   onArchive: (item: Item) => Promise<unknown>;
   onPurchase: (item: Item) => Promise<unknown>;
   onSendToPrintQueue: (item: Item) => Promise<unknown>;
@@ -71,6 +72,7 @@ export function InboxView({
   onCancelEditing,
   onSaveEditing,
   onClassify,
+  onMoveToTodo,
   onArchive,
   onPurchase,
   onSendToPrintQueue,
@@ -326,6 +328,16 @@ export function InboxView({
                   onClick={() => onClassify(item)}
                 >
                   <Icon name="notes" size={16} />
+                </CardActionButton>
+              )}
+
+              {editingItemId !== item.id && (
+                <CardActionButton
+                  className="note-card__todo"
+                  aria-label="Todo로 이동"
+                  onClick={() => onMoveToTodo(item)}
+                >
+                  <Icon name="todo" size={16} />
                 </CardActionButton>
               )}
 

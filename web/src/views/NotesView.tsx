@@ -31,6 +31,7 @@ type NotesViewProps = {
   onCancelEditing: () => void;
   onSaveEditing: () => void;
   onMoveToNotes?: (item: Item) => Promise<unknown>;
+  onMoveToTodo?: (item: Item) => Promise<unknown>;
   onMoveToInbox?: (item: Item) => Promise<unknown>;
   onArchive: (item: Item) => Promise<unknown>;
   onPurchase?: (item: Item) => Promise<unknown>;
@@ -64,6 +65,7 @@ export function NotesView({
   onCancelEditing,
   onSaveEditing,
   onMoveToNotes,
+  onMoveToTodo,
   onMoveToInbox,
   onArchive,
   onPurchase,
@@ -270,6 +272,15 @@ export function NotesView({
                       onClick={() => onMoveToNotes(item)}
                     >
                       <Icon name="notes" size={16} />
+                    </CardActionButton>
+                  )}
+                  {onMoveToTodo && (
+                    <CardActionButton
+                      className="note-card__todo"
+                      aria-label="Todo로 이동"
+                      onClick={() => onMoveToTodo(item)}
+                    >
+                      <Icon name="todo" size={16} />
                     </CardActionButton>
                   )}
                   {onMoveToInbox && (
