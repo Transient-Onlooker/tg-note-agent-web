@@ -1604,8 +1604,13 @@
 }
 
 .print-queue-actions {
+  white-space: normal;
+}
+
+.print-queue-actions__inner {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 4px;
 }
 

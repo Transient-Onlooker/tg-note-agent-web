@@ -554,6 +554,7 @@ export function PrintQueueView({
                     })}
 
                     <td className="print-queue-actions">
+                      <div className="print-queue-actions__inner">
                       <button
                         type="button"
                         onClick={() => void moveItem(item, -1)}
@@ -590,6 +591,7 @@ export function PrintQueueView({
                       <button type="button" onClick={() => onDeleteRequest(item)}>
                         삭제
                       </button>
+                      </div>
                     </td>
                   </tr>
                 );
