@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState, type FocusEvent } from "react";
 import type { PrintJobProperties } from "@note-relay/shared";
 import type { Item, UpdateItemInput } from "../api/items";
 
@@ -55,6 +55,21 @@ function propertyValue(key: EditableProperty, value: string): unknown {
   return value;
 }
 
+function focusAdjacentEditableCell(input: HTMLInputElement, direction: number) {
+  const currentCell = input.closest("td");
+  if (!currentCell) return;
+
+  const cells = Array.from(
+    document.querySelectorAll<HTMLTableCellElement>(".print-queue-table tbody td"),
+  ).filter((cell) => cell.querySelector(".print-queue-cell-button, input"));
+  const currentIndex = cells.indexOf(currentCell);
+  const nextButton = cells[currentIndex + direction]?.querySelector<HTMLButtonElement>(
+    ".print-queue-cell-button",
+  );
+
+  if (nextButton) window.setTimeout(() => nextButton.focus(), 0);
+}
+
 export function PrintQueueView({
   items,
   isPending,
@@ -74,6 +89,8 @@ export function PrintQueueView({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savingCell, setSavingCell] = useState<string | null>(null);
   const [pendingRowActions, setPendingRowActions] = useState<string[]>([]);
+  const savingCellRef = useRef<string | null>(null);
+  const skipNextBlurRef = useRef(false);
 
   const cancelEditing = () => {
     setEditingCell(null);
@@ -82,48 +99,85 @@ export function PrintQueueView({
   };
 
   const startEditing = (cell: string, value: string) => {
-    if (savingCell) return;
+    if (savingCellRef.current) return;
     setEditingCell(cell);
     setDraft(value);
     setSaveError(null);
   };
 
-  const saveProperty = async (item: Item, key: EditableProperty) => {
+  const restoreAfterFailure = (serverValue: string) => {
+    setEditingCell(null);
+    setDraft(serverValue);
+    setSaveError("수정하지 못했습니다.");
+  };
+
+  const saveProperty = async (
+    item: Item,
+    key: EditableProperty,
+    afterSave?: () => void,
+  ) => {
     const cellKey = `${item.id}:${key}`;
-    if (savingCell) return;
+    if (savingCellRef.current) return;
 
     const properties = readProperties(item);
+    const originalValue = displayValue(properties, key, item);
     const nextValue = propertyValue(key, draft);
     if ((key === "grams" || key === "price") && nextValue !== undefined && Number.isNaN(nextValue)) {
       setSaveError("숫자를 입력해 주세요.");
       return;
     }
 
-    if (nextValue === undefined) delete properties[key];
-    else properties[key] = nextValue as never;
+    const nextProperties = { ...properties };
+    if (nextValue === undefined) delete nextProperties[key];
+    else nextProperties[key] = nextValue as never;
 
+    if (JSON.stringify(nextProperties) === JSON.stringify(properties)) {
+      cancelEditing();
+      afterSave?.();
+      return;
+    }
+
+    savingCellRef.current = cellKey;
     setSavingCell(cellKey);
     try {
-      await onUpdateItem(item.id, { properties_json: JSON.stringify(properties) });
+      await onUpdateItem(item.id, { properties_json: JSON.stringify(nextProperties) });
       cancelEditing();
+      afterSave?.();
     } catch {
-      setSaveError("수정하지 못했습니다.");
+      restoreAfterFailure(originalValue);
     } finally {
+      savingCellRef.current = null;
       setSavingCell(null);
     }
   };
 
-  const saveOutput = async (item: Item) => {
+  const saveOutput = async (item: Item, afterSave?: () => void) => {
     const cellKey = `${item.id}:output`;
-    if (savingCell || !draft.trim()) return;
+    if (savingCellRef.current) return;
 
+    const originalValue = item.title?.trim() || item.body;
+    const nextValue = draft.trim();
+    if (!nextValue) {
+      restoreAfterFailure(originalValue);
+      return;
+    }
+
+    if (nextValue === originalValue) {
+      cancelEditing();
+      afterSave?.();
+      return;
+    }
+
+    savingCellRef.current = cellKey;
     setSavingCell(cellKey);
     try {
-      await onUpdateItem(item.id, { body: draft.trim() });
+      await onUpdateItem(item.id, { body: nextValue });
       cancelEditing();
+      afterSave?.();
     } catch {
-      setSaveError("수정하지 못했습니다.");
+      restoreAfterFailure(originalValue);
     } finally {
+      savingCellRef.current = null;
       setSavingCell(null);
     }
   };
@@ -144,6 +198,24 @@ export function PrintQueueView({
 
   const isRowActionPending = (item: Item, action: "inbox" | "archive") =>
     pendingRowActions.includes(`${item.id}:${action}`);
+
+  const handleInputBlur = (
+    item: Item,
+    key: EditableProperty | "output",
+    event: FocusEvent<HTMLInputElement>,
+  ) => {
+    if (skipNextBlurRef.current) {
+      skipNextBlurRef.current = false;
+      return;
+    }
+
+    if (event.relatedTarget instanceof HTMLElement && event.relatedTarget.closest('[data-edit-action="cancel"]')) {
+      return;
+    }
+
+    if (key === "output") void saveOutput(item);
+    else void saveProperty(item, key);
+  };
 
   if (isPending) return <div className="state-panel">Print Queue를 불러오는 중입니다.</div>;
   if (isError) {
@@ -171,13 +243,13 @@ export function PrintQueueView({
 
               return <tr key={item.id}>
                 <td>{item.position || index + 1}</td>
-                <td>{editingCell === outputKey ? <div className="print-queue-edit-cell"><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveOutput(item); if (event.key === "Escape") cancelEditing(); }} autoFocus /><button type="button" onClick={() => void saveOutput(item)} disabled={outputSaving}>저장</button><button type="button" onClick={cancelEditing} disabled={outputSaving}>취소</button></div> : <button className="print-queue-cell-button print-queue-output" type="button" onClick={() => startEditing(outputKey, output)}>{output}</button>}</td>
+                <td>{editingCell === outputKey ? <div className="print-queue-edit-cell"><input value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={(event) => handleInputBlur(item, "output", event)} onKeyDown={(event) => { const input = event.currentTarget; if (event.key === "Enter") { event.preventDefault(); void saveOutput(item); } if (event.key === "Tab") { event.preventDefault(); void saveOutput(item, () => focusAdjacentEditableCell(input, event.shiftKey ? -1 : 1)); } if (event.key === "Escape") { event.preventDefault(); skipNextBlurRef.current = true; cancelEditing(); } }} autoFocus disabled={outputSaving} /><button data-edit-action="save" type="button" onClick={() => void saveOutput(item)} disabled={outputSaving}>저장</button><button data-edit-action="cancel" type="button" onClick={cancelEditing} disabled={outputSaving}>취소</button></div> : <button className="print-queue-cell-button print-queue-output" type="button" onClick={() => startEditing(outputKey, output)}>{output}</button>}</td>
                 {columns.map((column) => {
                   const value = displayValue(properties, column.key, item);
                   const cellKey = `${item.id}:${column.key}`;
                   const cellSaving = savingCell === cellKey;
 
-                  return <td key={column.key}>{editingCell === cellKey ? <div className="print-queue-edit-cell"><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveProperty(item, column.key); if (event.key === "Escape") cancelEditing(); }} autoFocus /><button type="button" onClick={() => void saveProperty(item, column.key)} disabled={cellSaving}>저장</button><button type="button" onClick={cancelEditing} disabled={cellSaving}>취소</button></div> : <button className="print-queue-cell-button" type="button" onClick={() => startEditing(cellKey, value)}>{value || "—"}</button>}</td>;
+                  return <td key={column.key}>{editingCell === cellKey ? <div className="print-queue-edit-cell"><input value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={(event) => handleInputBlur(item, column.key, event)} onKeyDown={(event) => { const input = event.currentTarget; if (event.key === "Enter") { event.preventDefault(); void saveProperty(item, column.key); } if (event.key === "Tab") { event.preventDefault(); void saveProperty(item, column.key, () => focusAdjacentEditableCell(input, event.shiftKey ? -1 : 1)); } if (event.key === "Escape") { event.preventDefault(); skipNextBlurRef.current = true; cancelEditing(); } }} autoFocus disabled={cellSaving} /><button data-edit-action="save" type="button" onClick={() => void saveProperty(item, column.key)} disabled={cellSaving}>저장</button><button data-edit-action="cancel" type="button" onClick={cancelEditing} disabled={cellSaving}>취소</button></div> : <button className="print-queue-cell-button" type="button" onClick={() => startEditing(cellKey, value)}>{value || "—"}</button>}</td>;
                 })}
                 <td className="print-queue-actions"><button type="button" onClick={() => void runRowAction(item, "inbox", onMoveToInbox)} disabled={isRowActionPending(item, "inbox")}>{isRowActionPending(item, "inbox") ? "이동 중..." : "Inbox"}</button><button type="button" onClick={() => void runRowAction(item, "archive", onArchive)} disabled={isRowActionPending(item, "archive")}>{isRowActionPending(item, "archive") ? "보관 중..." : "보관"}</button><button type="button" onClick={() => onDeleteRequest(item)}>삭제</button></td>
               </tr>;
