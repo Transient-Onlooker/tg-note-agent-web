@@ -1,4 +1,9 @@
-import { useRef, useState, type FocusEvent } from "react";
+import {
+  useRef,
+  useState,
+  type FocusEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type { PrintJobProperties } from "@note-relay/shared";
 import type { Item, UpdateItemInput } from "../api/items";
 
@@ -19,6 +24,12 @@ type PrintQueueViewProps = {
 
 type EditableProperty = keyof PrintJobProperties;
 type QueueStatus = NonNullable<PrintJobProperties["queue_status"]>;
+type DragState = {
+  itemId: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+};
 
 const queueStatusOptions: Array<{ value: "" | QueueStatus; label: string }> = [
   { value: "", label: "미상" },
@@ -138,9 +149,14 @@ export function PrintQueueView({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savingCell, setSavingCell] = useState<string | null>(null);
   const [pendingRowActions, setPendingRowActions] = useState<string[]>([]);
-  const [movingItemId, setMovingItemId] = useState<string | null>(null);
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const [isReordering, setIsReordering] = useState(false);
   const savingCellRef = useRef<string | null>(null);
   const skipNextBlurRef = useRef(false);
+  const dragStateRef = useRef<DragState | null>(null);
+  const dragMovedRef = useRef(false);
+  const dropIndexRef = useRef<number | null>(null);
 
   const orderedItems = [...items].sort(
     (left, right) =>
@@ -148,6 +164,9 @@ export function PrintQueueView({
       left.created_at.localeCompare(right.created_at) ||
       left.id.localeCompare(right.id),
   );
+  const draggedIndex = draggedItemId
+    ? orderedItems.findIndex((item) => item.id === draggedItemId)
+    : -1;
 
   const cancelEditing = () => {
     setEditingCell(null);
@@ -156,7 +175,7 @@ export function PrintQueueView({
   };
 
   const startEditing = (cell: string, value: string) => {
-    if (savingCellRef.current || movingItemId) return;
+    if (savingCellRef.current || isReordering) return;
     setEditingCell(cell);
     setDraft(value);
     setSaveError(null);
@@ -265,47 +284,134 @@ export function PrintQueueView({
   const isRowActionPending = (item: Item, action: "inbox" | "archive") =>
     pendingRowActions.includes(`${item.id}:${action}`);
 
-  const moveItem = async (item: Item, direction: -1 | 1) => {
-    if (movingItemId) return;
+  const reorderItems = async (itemId: string, targetIndex: number) => {
+    if (isReordering) return;
 
     const currentIndex = orderedItems.findIndex(
-      (candidate) => candidate.id === item.id,
+      (candidate) => candidate.id === itemId,
     );
-    const targetIndex = currentIndex + direction;
     if (
       currentIndex < 0 ||
       targetIndex < 0 ||
-      targetIndex >= orderedItems.length
+      targetIndex > orderedItems.length ||
+      targetIndex === currentIndex ||
+      targetIndex === currentIndex + 1
     ) {
       return;
     }
 
     const reorderedItems = [...orderedItems];
     const [movedItem] = reorderedItems.splice(currentIndex, 1);
-    reorderedItems.splice(targetIndex, 0, movedItem);
+    const insertionIndex = targetIndex > currentIndex
+      ? targetIndex - 1
+      : targetIndex;
+    reorderedItems.splice(insertionIndex, 0, movedItem);
 
-    setMovingItemId(item.id);
+    const updates = reorderedItems
+      .map((queueItem, index) => ({ queueItem, nextPosition: index + 1 }))
+      .filter(({ queueItem, nextPosition }) => queueItem.position !== nextPosition)
+      .map(({ queueItem, nextPosition }) =>
+        onUpdateItem(queueItem.id, { position: nextPosition }),
+      );
+
+    if (updates.length === 0) return;
+
+    setIsReordering(true);
     setSaveError(null);
     try {
-      await Promise.all(
-        reorderedItems
-          .map((queueItem, index) => ({
-            queueItem,
-            nextPosition: index + 1,
-          }))
-          .filter(
-            ({ queueItem, nextPosition }) =>
-              queueItem.position !== nextPosition,
-          )
-          .map(({ queueItem, nextPosition }) =>
-            onUpdateItem(queueItem.id, { position: nextPosition }),
-          ),
-      );
-    } catch {
-      setSaveError("순서를 변경하지 못했습니다.");
+      const results = await Promise.allSettled(updates);
+      if (results.some((result) => result.status === "rejected")) {
+        setSaveError("순서를 변경하지 못했습니다.");
+        onRetry();
+      }
     } finally {
-      setMovingItemId(null);
+      setIsReordering(false);
     }
+  };
+
+  const resetDrag = () => {
+    dragStateRef.current = null;
+    dragMovedRef.current = false;
+    dropIndexRef.current = null;
+    setDraggedItemId(null);
+    setDropIndex(null);
+  };
+
+  const handleOrderPointerDown = (
+    event: ReactPointerEvent<HTMLTableCellElement>,
+    item: Item,
+    index: number,
+  ) => {
+    if (isReordering || savingCellRef.current || event.button !== 0) return;
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragStateRef.current = {
+      itemId: item.id,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    dragMovedRef.current = false;
+    dropIndexRef.current = index;
+    setDraggedItemId(item.id);
+    setDropIndex(index);
+  };
+
+  const handleOrderPointerMove = (
+    event: ReactPointerEvent<HTMLTableCellElement>,
+  ) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+    if (!dragMovedRef.current) {
+      const distance = Math.hypot(
+        event.clientX - dragState.startX,
+        event.clientY - dragState.startY,
+      );
+      if (distance < 4) return;
+      dragMovedRef.current = true;
+    }
+
+    event.preventDefault();
+    const target = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>(".print-queue-order-handle");
+    const targetIndex = Number(target?.dataset.queueIndex);
+    if (!Number.isInteger(targetIndex)) return;
+
+    const targetBounds = target?.getBoundingClientRect();
+    const nextDropIndex = targetIndex + (
+      targetBounds && event.clientY > targetBounds.top + targetBounds.height / 2
+        ? 1
+        : 0
+    );
+
+    if (dropIndexRef.current !== nextDropIndex) {
+      dropIndexRef.current = nextDropIndex;
+      setDropIndex(nextDropIndex);
+    }
+  };
+
+  const handleOrderPointerEnd = (
+    event: ReactPointerEvent<HTMLTableCellElement>,
+  ) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    const targetIndex = dragMovedRef.current ? dropIndexRef.current : null;
+    const itemId = dragState.itemId;
+    resetDrag();
+    if (targetIndex !== null) void reorderItems(itemId, targetIndex);
+  };
+
+  const handleOrderPointerCancel = (
+    event: ReactPointerEvent<HTMLTableCellElement>,
+  ) => {
+    if (dragStateRef.current?.pointerId === event.pointerId) resetDrag();
   };
 
   const handleInputBlur = (
@@ -390,10 +496,37 @@ export function PrintQueueView({
                 const output = item.body;
                 const outputKey = `${item.id}:output`;
                 const outputSaving = savingCell === outputKey;
+                const showsDropBefore =
+                  dropIndex === index &&
+                  dropIndex !== draggedIndex &&
+                  dropIndex !== draggedIndex + 1;
+                const showsDropAfter =
+                  dropIndex === orderedItems.length &&
+                  index === orderedItems.length - 1 &&
+                  dropIndex !== draggedIndex + 1;
+                const rowClassName = [
+                  draggedItemId === item.id && "print-queue-row--dragging",
+                  showsDropBefore && "print-queue-row--drop-before",
+                  showsDropAfter && "print-queue-row--drop-after",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
 
                 return (
-                  <tr key={item.id}>
-                    <td>{index + 1}</td>
+                  <tr className={rowClassName || undefined} key={item.id}>
+                    <td
+                      aria-label={`${index + 1}번 작업 순서 변경`}
+                      className="print-queue-order-handle"
+                      data-queue-index={index}
+                      onPointerCancel={handleOrderPointerCancel}
+                      onPointerDown={(event) =>
+                        handleOrderPointerDown(event, item, index)
+                      }
+                      onPointerMove={handleOrderPointerMove}
+                      onPointerUp={handleOrderPointerEnd}
+                    >
+                      {index + 1}
+                    </td>
                     <td>
                       {editingCell === outputKey ? (
                         <div className="print-queue-edit-cell">
@@ -555,25 +688,6 @@ export function PrintQueueView({
 
                     <td className="print-queue-actions">
                       <div className="print-queue-actions__inner">
-                      <button
-                        type="button"
-                        onClick={() => void moveItem(item, -1)}
-                        disabled={Boolean(movingItemId) || index === 0}
-                        aria-label="위로 이동"
-                      >
-                        {movingItemId === item.id ? "이동 중..." : "↑"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void moveItem(item, 1)}
-                        disabled={
-                          Boolean(movingItemId) ||
-                          index === orderedItems.length - 1
-                        }
-                        aria-label="아래로 이동"
-                      >
-                        {movingItemId === item.id ? "이동 중..." : "↓"}
-                      </button>
                       <button
                         type="button"
                         onClick={() => void runRowAction(item, "inbox", onMoveToInbox)}
