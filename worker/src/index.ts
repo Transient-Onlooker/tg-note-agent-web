@@ -81,6 +81,7 @@ type UpdateItemRequest = {
   project_id?: unknown;
   due_at?: unknown;
   properties_json?: unknown;
+  position?: unknown;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -198,6 +199,10 @@ app.get("/api/items", async (c) => {
     bindings.push(new Date(dueTo).toISOString());
   }
 
+  const orderBy = kind === "print_job"
+    ? "ORDER BY position ASC, created_at ASC, id ASC"
+    : "ORDER BY created_at DESC";
+
   const statement = c.env.DB.prepare(`
     SELECT
       id,
@@ -218,7 +223,7 @@ app.get("/api/items", async (c) => {
       version
     FROM items
     WHERE ${conditions.join("\n      AND ")}
-    ORDER BY created_at DESC
+    ${orderBy}
     LIMIT 100
   `);
 
@@ -300,6 +305,23 @@ app.post("/api/items", async (c) => {
     return c.json({ error: "invalid_properties_json" }, 400);
   }
 
+  const position = kind === "print_job"
+    ? Math.max(
+        1,
+        Number(
+          (await c.env.DB
+            .prepare(`
+              SELECT COALESCE(MAX(position), 0) + 1 AS next_position
+              FROM items
+              WHERE kind = 'print_job'
+                AND status = 'active'
+                AND deleted_at IS NULL
+            `)
+            .first<{ next_position: number }>())?.next_position,
+        ) || 1,
+      )
+    : 0;
+
   const captureId = crypto.randomUUID();
   const itemId = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -326,12 +348,13 @@ app.post("/api/items", async (c) => {
           status,
           body,
           properties_json,
+          position,
           created_at,
           updated_at
         )
-        VALUES (?, ?, ?, 'active', ?, ?, ?, ?)
+        VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?)
       `)
-      .bind(itemId, captureId, kind, body, propertiesJson, now, now),
+      .bind(itemId, captureId, kind, body, propertiesJson, position, now, now),
   ]);
 
   if (!results.every((result) => result.success)) {
@@ -361,6 +384,7 @@ app.post("/api/items", async (c) => {
         title: null,
         body,
         properties_json: propertiesJson,
+        position,
         created_at: now,
         updated_at: now,
         version: 1,
@@ -384,7 +408,7 @@ app.patch("/api/items/:id", async (c) => {
   }
 
   const assignments: string[] = [];
-  const bindings: (string | null)[] = [];
+  const bindings: (string | number | null)[] = [];
 
   const hasBody = Object.prototype.hasOwnProperty.call(payload, "body");
   const hasKind = Object.prototype.hasOwnProperty.call(payload, "kind");
@@ -398,6 +422,7 @@ app.patch("/api/items/:id", async (c) => {
     payload,
     "properties_json",
   );
+  const hasPosition = Object.prototype.hasOwnProperty.call(payload, "position");
 
   if (hasBody) {
     if (typeof payload.body !== "string") {
@@ -479,6 +504,19 @@ app.patch("/api/items/:id", async (c) => {
 
     assignments.push("properties_json = ?");
     bindings.push(propertiesJson);
+  }
+
+  if (hasPosition) {
+    if (
+      typeof payload.position !== "number" ||
+      !Number.isInteger(payload.position) ||
+      payload.position < 0
+    ) {
+      return c.json({ error: "invalid_position" }, 400);
+    }
+
+    assignments.push("position = ?");
+    bindings.push(payload.position);
   }
 
   if (assignments.length === 0) {

@@ -55,6 +55,7 @@ export type UpdateItemInput = {
   project_id?: string | null;
   due_at?: string | null;
   properties_json?: string;
+  position?: number;
 };
 
 export const itemQueryKeys = {

@@ -1576,7 +1576,8 @@
   align-items: center;
 }
 
-.print-queue-edit-cell input {
+.print-queue-edit-cell input,
+.print-queue-edit-cell select {
   width: 110px;
   min-height: 28px;
   padding: 4px 6px;
@@ -1604,6 +1605,7 @@
 
 .print-queue-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 
