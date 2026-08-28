@@ -11,7 +11,9 @@ import {
   createItem,
   createPrintJob,
   deleteItem,
+  getItemCounts,
   itemQueryKeys,
+  itemCountQueryKeys,
   listItems,
   listTrash,
   restoreItem,
@@ -206,6 +208,18 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     enabled: activeView === "today",
   });
 
+  const itemCountsQuery = useQuery({
+    queryKey: itemCountQueryKeys.list(todayRange.dueTo),
+    queryFn: () => getItemCounts(todayRange.dueTo),
+  });
+
+  const invalidateItemData = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: itemQueryKeys.all }),
+      queryClient.invalidateQueries({ queryKey: itemCountQueryKeys.all }),
+    ]);
+  };
+
   const archiveFilters = { status: "archived" as const };
   const archiveQuery = useQuery({
     queryKey: itemQueryKeys.list(archiveFilters),
@@ -237,7 +251,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     mutationFn: createItem,
     onSuccess: async () => {
       setDraft("");
-      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      await invalidateItemData();
       showActionFeedback("Inbox에 메모를 추가했습니다.");
     },
     onError: () => showActionFeedback("메모를 추가하지 못했습니다.", "error"),
@@ -247,7 +261,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     mutationFn: deleteItem,
     onSuccess: async () => {
       setDeleteTarget(null);
-      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      await invalidateItemData();
       await queryClient.invalidateQueries({ queryKey: ["trash"] });
       showActionFeedback("메모를 삭제했습니다.");
     },
@@ -257,7 +271,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const createPrintJobMutation = useMutation({
     mutationFn: createPrintJob,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      await invalidateItemData();
       showActionFeedback("Print Queue에 작업을 추가했습니다.");
     },
     onError: () => showActionFeedback("작업을 추가하지 못했습니다.", "error"),
@@ -274,7 +288,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             item.id === updatedItem.id ? updatedItem : item,
           ),
       );
-      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      await invalidateItemData();
       setEditingItemId(null);
       setEditDraft("");
       setEditDueAt("");
@@ -315,7 +329,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
               ]
             : items?.filter((item) => item.id !== updatedItem.id),
       );
-      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      await invalidateItemData();
       showActionFeedback(
         variables.dueAt ? "Today에 추가했습니다." : "기한을 제거했습니다.",
       );
@@ -377,7 +391,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
               ]
             : items?.filter((item) => item.id !== updatedItem.id),
       );
-      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      await invalidateItemData();
       const labels = {
         inbox: "Inbox",
         note: "Notes",
@@ -445,10 +459,10 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       updateItemFields(id, { kind: "task", due_at: todayRange.dueFrom }),
     onSuccess: async (updatedItem: Item) => {
       syncStatusItemCache(updatedItem);
-      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
-      showActionFeedback("Todo / Today濡??대룞?덉뒿?덈떎.");
+      await invalidateItemData();
+      showActionFeedback("Todo / Today로 이동했습니다.");
     },
-    onError: () => showActionFeedback("Today濡??ㅼ젙?섏? 紐삵뻽?듬땲??", "error"),
+    onError: () => showActionFeedback("Today로 설정하지 못했습니다.", "error"),
   });
 
   const archiveItemMutation = useMutation({
@@ -456,7 +470,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       updateItemFields(id, { status: "archived" }),
     onSuccess: async (updatedItem: Item) => {
       syncStatusItemCache(updatedItem);
-      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      await invalidateItemData();
       showActionFeedback("Archive로 이동했습니다.");
     },
     onError: () => showActionFeedback("Archive로 이동하지 못했습니다.", "error"),
@@ -467,7 +481,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       updateItemFields(id, { status: "active" }),
     onSuccess: async (updatedItem: Item) => {
       syncStatusItemCache(updatedItem);
-      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      await invalidateItemData();
       showActionFeedback("활성 메모로 복원했습니다.");
     },
     onError: () => showActionFeedback("복원하지 못했습니다.", "error"),
@@ -480,7 +494,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
         items?.filter((item) => item.id !== restoredItem.id),
       );
       setRestoreError(null);
-      await queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+      await invalidateItemData();
       await queryClient.invalidateQueries({ queryKey: ["trash"] });
       showActionFeedback("휴지통에서 복원했습니다.");
     },
@@ -627,13 +641,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       <AppShell
         activeView={activeView}
         isSidebarOpen={isSidebarOpen}
-        inboxCount={inboxCount}
-        todoCount={todoCount}
-        trashCount={
-          trashQuery.isSuccess
-            ? trashQuery.data.length
-            : null
-        }
+        counts={itemCountsQuery.data ?? null}
         onNavigate={handleNavigation}
         onOpenSidebar={() => setIsSidebarOpen(true)}
         onCloseSidebar={() => setIsSidebarOpen(false)}

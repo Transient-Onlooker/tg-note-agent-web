@@ -6,7 +6,7 @@ import {
   clearAccessKey,
   getAccessKey,
 } from "./api/auth";
-import { itemQueryKeys } from "./api/items";
+import { itemCountQueryKeys, itemQueryKeys } from "./api/items";
 
 type RealtimeEvent = {
   type:
@@ -26,6 +26,8 @@ function getWebSocketUrl() {
 }
 
 function notifyQueries(queryClient: QueryClient, event: RealtimeEvent) {
+  void queryClient.invalidateQueries({ queryKey: itemCountQueryKeys.all });
+
   if (event.type === "item_deleted" || event.type === "item_restored") {
     void queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
     void queryClient.invalidateQueries({ queryKey: ["trash"] });

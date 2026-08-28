@@ -3,14 +3,13 @@ import {
   navigationGroups,
   type ViewId,
 } from "../config/navigation";
+import type { ItemCounts } from "../api/items";
 import { Icon } from "./Icon";
 
 type AppShellProps = {
   activeView: ViewId;
   isSidebarOpen: boolean;
-  inboxCount: number | null;
-  todoCount: number | null;
-  trashCount: number | null;
+  counts: ItemCounts | null;
   onNavigate: (view: ViewId) => void;
   onOpenSidebar: () => void;
   onCloseSidebar: () => void;
@@ -18,12 +17,21 @@ type AppShellProps = {
   children: ReactNode;
 };
 
+const itemCountKeys: Partial<Record<ViewId, keyof ItemCounts>> = {
+  inbox: "inbox",
+  todo: "todo",
+  today: "today",
+  notes: "notes",
+  "print-queue": "printQueue",
+  purchase: "purchase",
+  archive: "archive",
+  trash: "trash",
+};
+
 export function AppShell({
   activeView,
   isSidebarOpen,
-  inboxCount,
-  todoCount,
-  trashCount,
+  counts,
   onNavigate,
   onOpenSidebar,
   onCloseSidebar,
@@ -74,8 +82,11 @@ export function AppShell({
               <p className="nav-group__label">{group.label}</p>
 
               <div className="nav-group__items">
-                {group.items.map((item) => (
-                  <button
+                {group.items.map((item) => {
+                  const countKey = itemCountKeys[item.id];
+                  const itemCount = counts && countKey ? counts[countKey] : null;
+
+                  return <button
                     type="button"
                     className={`nav-item${
                       activeView === item.id ? " is-active" : ""
@@ -89,27 +100,13 @@ export function AppShell({
                     <Icon name={item.id} size={18} />
                     <span>{item.label}</span>
 
-                    {item.id === "inbox" &&
-                      inboxCount !== null && (
+                    {itemCount !== null && itemCount > 0 && (
                         <span className="nav-item__count">
-                          {inboxCount}
+                          {itemCount}
                         </span>
-                      )}
-
-                    {item.id === "todo" && todoCount !== null && (
-                      <span className="nav-item__count">
-                        {todoCount}
-                      </span>
                     )}
-
-                    {item.id === "trash" &&
-                      trashCount !== null && (
-                        <span className="nav-item__count">
-                          {trashCount}
-                        </span>
-                      )}
                   </button>
-                ))}
+                })}
               </div>
             </div>
           ))}
@@ -161,9 +158,9 @@ export function AppShell({
             <strong>NoteRelay</strong>
           </div>
 
-          {inboxCount !== null ? (
+          {counts && counts.inbox > 0 ? (
             <span className="mobile-count">
-              {inboxCount}
+              {counts.inbox}
             </span>
           ) : (
             <span className="mobile-count mobile-count--empty" />

@@ -58,6 +58,17 @@ export type UpdateItemInput = {
   position?: number;
 };
 
+export type ItemCounts = {
+  inbox: number;
+  todo: number;
+  today: number;
+  notes: number;
+  printQueue: number;
+  purchase: number;
+  archive: number;
+  trash: number;
+};
+
 export const itemQueryKeys = {
   all: ["items"] as const,
   list: (filters: ItemFilters = {}) =>
@@ -68,6 +79,11 @@ export const itemQueryKeys = {
       dueFrom: filters.dueFrom ?? null,
       dueTo: filters.dueTo ?? null,
     }] as const,
+};
+
+export const itemCountQueryKeys = {
+  all: ["item-counts"] as const,
+  list: (todayTo: string) => ["item-counts", { todayTo }] as const,
 };
 
 function buildItemsUrl(filters: ItemFilters) {
@@ -109,6 +125,19 @@ export async function listItems(
 
   const data: { items: Item[] } = await response.json();
   return data.items;
+}
+
+export async function getItemCounts(todayTo: string): Promise<ItemCounts> {
+  const response = await authenticatedFetch(
+    `${API_BASE_URL}/api/counts?today_to=${encodeURIComponent(todayTo)}`,
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch item counts: ${response.status}`);
+  }
+
+  const data: { counts: ItemCounts } = await response.json();
+  return data.counts;
 }
 
 export async function getItems(): Promise<Item[]> {

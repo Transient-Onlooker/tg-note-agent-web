@@ -148,6 +148,47 @@ app.get("/api/health", (c) => {
   });
 });
 
+app.get("/api/counts", async (c) => {
+  const todayTo = c.req.query("today_to");
+  const isIsoDateTime =
+    typeof todayTo === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(todayTo) &&
+    !Number.isNaN(Date.parse(todayTo));
+
+  if (!isIsoDateTime) {
+    return c.json({ error: "invalid_today_to" }, 400);
+  }
+
+  const result = await c.env.DB
+    .prepare(`
+      SELECT
+        SUM(CASE WHEN deleted_at IS NULL AND kind = 'inbox' AND status = 'active' THEN 1 ELSE 0 END) AS inbox,
+        SUM(CASE WHEN deleted_at IS NULL AND kind = 'task' AND status = 'active' THEN 1 ELSE 0 END) AS todo,
+        SUM(CASE WHEN deleted_at IS NULL AND kind = 'task' AND status = 'active' AND due_at < ? THEN 1 ELSE 0 END) AS today,
+        SUM(CASE WHEN deleted_at IS NULL AND kind = 'note' AND status = 'active' THEN 1 ELSE 0 END) AS notes,
+        SUM(CASE WHEN deleted_at IS NULL AND kind = 'print_job' AND status = 'active' THEN 1 ELSE 0 END) AS print_queue,
+        SUM(CASE WHEN deleted_at IS NULL AND kind = 'purchase' AND status = 'active' THEN 1 ELSE 0 END) AS purchase,
+        SUM(CASE WHEN deleted_at IS NULL AND status = 'archived' THEN 1 ELSE 0 END) AS archive,
+        SUM(CASE WHEN deleted_at IS NOT NULL THEN 1 ELSE 0 END) AS trash
+      FROM items
+    `)
+    .bind(new Date(todayTo).toISOString())
+    .first<Record<string, number>>();
+
+  return c.json({
+    counts: {
+      inbox: Number(result?.inbox ?? 0),
+      todo: Number(result?.todo ?? 0),
+      today: Number(result?.today ?? 0),
+      notes: Number(result?.notes ?? 0),
+      printQueue: Number(result?.print_queue ?? 0),
+      purchase: Number(result?.purchase ?? 0),
+      archive: Number(result?.archive ?? 0),
+      trash: Number(result?.trash ?? 0),
+    },
+  });
+});
+
 app.get("/api/items", async (c) => {
   const kind = c.req.query("kind");
   const status = c.req.query("status");
