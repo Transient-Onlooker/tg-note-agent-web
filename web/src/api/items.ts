@@ -97,6 +97,7 @@ function buildItemsUrl(filters: ItemFilters) {
     params.set("status", filters.status);
   }
 
+
   if (filters.projectId) {
     params.set("project_id", filters.projectId);
   }

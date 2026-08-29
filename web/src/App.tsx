@@ -197,7 +197,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const todoFilters = { kind: "task" as const, status: "active" as const };
   const notesFilters = { kind: "note" as const, status: "active" as const };
   const todayFilters = {
-    kind: "task" as const,
     status: "active" as const,
     dueTo: todayRange.dueTo,
   };
@@ -209,7 +208,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
 
   const notesQuery = useQuery({
     queryKey: itemQueryKeys.list(notesFilters),
-    queryFn: () => listItems({ kind: "note", status: "active" }),
+    queryFn: () => listItems(notesFilters),
     enabled: activeView === "notes",
   });
 
@@ -381,7 +380,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
 
       const isDueForTodayView =
         updatedItem.status === "active" &&
-        updatedItem.kind === "task" &&
         updatedItem.due_at !== null &&
         updatedItem.due_at < todayRange.dueTo;
 
@@ -502,7 +500,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     updateList(
       itemQueryKeys.list(todayFilters),
       updatedItem.status === "active" &&
-        updatedItem.kind === "task" &&
         updatedItem.due_at !== null &&
         updatedItem.due_at < todayRange.dueTo,
     );
@@ -520,16 +517,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     );
   };
 
-  const setItemTodayMutation = useMutation({
-    mutationFn: (id: string) =>
-      updateItemFields(id, { kind: "task", due_at: todayRange.dueFrom }),
-    onSuccess: async (updatedItem: Item) => {
-      syncStatusItemCache(updatedItem);
-      await invalidateItemData();
-      showActionFeedback("Todo / Today로 이동했습니다.");
-    },
-    onError: () => showActionFeedback("Today로 설정하지 못했습니다.", "error"),
-  });
 
   const archiveItemMutation = useMutation({
     mutationFn: (id: string) =>
@@ -604,16 +591,10 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const notesCount = notesQuery.isSuccess ? notesQuery.data.length : null;
   const todayCount = todayQuery.isSuccess ? todayQuery.data.length : null;
   const todayItems = todayQuery.data?.filter(
-    (item) =>
-      item.kind === "task" &&
-      item.due_at !== null &&
-      item.due_at >= todayRange.dueFrom,
+    (item) => item.due_at !== null && item.due_at >= todayRange.dueFrom,
   ) ?? [];
   const overdueItems = todayQuery.data?.filter(
-    (item) =>
-      item.kind === "task" &&
-      item.due_at !== null &&
-      item.due_at < todayRange.dueFrom,
+    (item) => item.due_at !== null && item.due_at < todayRange.dueFrom,
   ) ?? [];
   const todoCount = todoQuery.isSuccess ? todoQuery.data.length : null;
   const archiveCount = archiveQuery.isSuccess ? archiveQuery.data.length : null;
@@ -717,9 +698,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const clearItemDue = (item: Item) =>
     updateDueMutation.mutateAsync({ id: item.id, dueAt: null });
 
-  const setItemTodayFromInbox = (item: Item) =>
-    setItemTodayMutation.mutateAsync(item.id);
-
   return (
     <>
       <AppShell
@@ -775,7 +753,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
-            onSetToday={setItemTodayFromInbox}
+            onSetToday={setItemDueToday}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "notes" ? (

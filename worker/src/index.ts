@@ -164,7 +164,7 @@ app.get("/api/counts", async (c) => {
       SELECT
         SUM(CASE WHEN deleted_at IS NULL AND kind = 'inbox' AND status = 'active' THEN 1 ELSE 0 END) AS inbox,
         SUM(CASE WHEN deleted_at IS NULL AND kind = 'task' AND status = 'active' THEN 1 ELSE 0 END) AS todo,
-        SUM(CASE WHEN deleted_at IS NULL AND kind = 'task' AND status = 'active' AND due_at < ? THEN 1 ELSE 0 END) AS today,
+        SUM(CASE WHEN deleted_at IS NULL AND status = 'active' AND due_at < ? THEN 1 ELSE 0 END) AS today,
         SUM(CASE WHEN deleted_at IS NULL AND kind = 'note' AND status = 'active' THEN 1 ELSE 0 END) AS notes,
         SUM(CASE WHEN deleted_at IS NULL AND kind = 'print_job' AND status = 'active' THEN 1 ELSE 0 END) AS print_queue,
         SUM(CASE WHEN deleted_at IS NULL AND kind = 'purchase' AND status = 'active' THEN 1 ELSE 0 END) AS purchase,
@@ -212,6 +212,7 @@ app.get("/api/items", async (c) => {
     return c.json({ error: "invalid_due_to" }, 400);
   }
 
+
   const conditions = ["deleted_at IS NULL"];
   const bindings: string[] = [];
 
@@ -239,6 +240,7 @@ app.get("/api/items", async (c) => {
     conditions.push("due_at < ?");
     bindings.push(new Date(dueTo).toISOString());
   }
+
 
   const orderBy = kind === "print_job"
     ? "ORDER BY position ASC, created_at ASC, id ASC"
@@ -489,6 +491,9 @@ app.patch("/api/items/:id", async (c) => {
 
     assignments.push("kind = ?");
     bindings.push(kind);
+
+    assignments.push("triaged_at = ?");
+    bindings.push(new Date().toISOString());
   }
 
   if (hasStatus) {
