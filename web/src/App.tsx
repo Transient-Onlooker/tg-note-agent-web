@@ -53,7 +53,8 @@ import {
 import "./App.css";
 
 type AuthStatus = "checking" | "locked" | "authenticated";
-type ActionFeedback = { message: string; tone: "success" | "error" };
+type UndoAction = { actionId: number; itemId: string; kind: "move" | "due" | "archive" | "delete"; snapshot: Item };
+type ActionFeedback = { message: string; tone: "success" | "error"; undo?: UndoAction };
 type UpdateItemContext = {
   snapshots: Array<[readonly unknown[], Item[] | undefined]>;
 };
@@ -67,6 +68,38 @@ type UpdateItemVariables = {
   draft?: EditDraftSnapshot;
   editorSession?: number;
 };
+type MoveItemVariables = {
+  id: string;
+  kind: "inbox" | "note" | "task" | "purchase" | "print_job";
+  sourceView: ViewId;
+  snapshot: Item;
+  actionId: number;
+};
+type MoveItemContext = UpdateItemContext;
+type ArchiveItemVariables = {
+  id: string;
+  sourceView: ViewId;
+  snapshot: Item;
+  actionId: number;
+};
+
+function sortTodoItems(items: Item[]) {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      if (left.item.due_at === null && right.item.due_at === null) {
+        return left.index - right.index;
+      }
+      if (left.item.due_at === null) return 1;
+      if (right.item.due_at === null) return -1;
+
+      const dueDifference = Date.parse(left.item.due_at) - Date.parse(right.item.due_at);
+      return dueDifference || left.index - right.index;
+    })
+    .map(({ item }) => item);
+}
+
+
 
 
 function App() {
@@ -167,22 +200,52 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
+  const [feedbackExpiresAt, setFeedbackExpiresAt] = useState<number | null>(null);
+  const [feedbackRemainingMs, setFeedbackRemainingMs] = useState(0);
   const [localDateKey, setLocalDateKey] = useState(() => getLocalDateKey());
   const queryClient = useQueryClient();
   const editingItemIdRef = useRef<string | null>(null);
   const failedEditDraftsRef = useRef(new Map<string, EditDraftSnapshot>());
   const editorSessionRef = useRef(0);
+  const movingItemIdsRef = useRef(new Set<string>());
+  const undoActionSequenceRef = useRef(0);
+  const latestActionByItemRef = useRef(new Map<string, number>());
   useRealtimeSync(queryClient);
 
   const showActionFeedback = (message: string, tone: ActionFeedback["tone"] = "success") => {
     setActionFeedback({ message, tone });
+    const expiresAt = Date.now() + 3000;
+    setFeedbackExpiresAt(expiresAt);
+    setFeedbackRemainingMs(3000);
+  };
+
+  const beginUndoableAction = (itemId: string) => {
+    const actionId = ++undoActionSequenceRef.current;
+    latestActionByItemRef.current.set(itemId, actionId);
+    return actionId;
+  };
+
+  const showUndoFeedback = (message: string, action: Omit<UndoAction, "actionId">, actionId: number) => {
+    setActionFeedback({ message, tone: "success", undo: { ...action, actionId } });
+    const expiresAt = Date.now() + 3000;
+    setFeedbackExpiresAt(expiresAt);
+    setFeedbackRemainingMs(3000);
   };
 
   useEffect(() => {
-    if (!actionFeedback) return;
-    const timeoutId = window.setTimeout(() => setActionFeedback(null), 2400);
-    return () => window.clearTimeout(timeoutId);
-  }, [actionFeedback]);
+    if (!actionFeedback || feedbackExpiresAt === null) return;
+    const updateRemaining = () => setFeedbackRemainingMs(Math.max(0, feedbackExpiresAt - Date.now()));
+    updateRemaining();
+    const intervalId = window.setInterval(updateRemaining, 100);
+    const timeoutId = window.setTimeout(() => {
+      setActionFeedback(null);
+      setFeedbackExpiresAt(null);
+    }, Math.max(0, feedbackExpiresAt - Date.now()));
+    return () => {
+      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [actionFeedback, feedbackExpiresAt]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -263,6 +326,32 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     enabled: activeView === "trash",
   });
 
+  const getViewQueryKey = (view: ViewId) => {
+    switch (view) {
+      case "inbox": return itemQueryKeys.list(inboxFilters);
+      case "notes": return itemQueryKeys.list(notesFilters);
+      case "todo": return itemQueryKeys.list(todoFilters);
+      case "today": return itemQueryKeys.list(todayFilters);
+      case "purchase": return itemQueryKeys.list(purchaseFilters);
+      case "print-queue": return itemQueryKeys.list(printQueueFilters);
+      case "archive": return itemQueryKeys.list(archiveFilters);
+      default: return null;
+    }
+  };
+
+  const snapshotItemQueries = () => queryClient.getQueriesData<Item[]>({
+    queryKey: itemQueryKeys.all,
+  });
+
+  const removeItemFromViewCache = (view: ViewId, itemId: string) => {
+    const queryKey = getViewQueryKey(view);
+    if (queryKey) {
+      queryClient.setQueryData<Item[]>(queryKey, (items) =>
+        items?.filter((item) => item.id !== itemId),
+      );
+    }
+  };
+
   const createItemMutation = useMutation({
     mutationFn: createItem,
     onSuccess: async () => {
@@ -274,12 +363,14 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   });
 
   const deleteItemMutation = useMutation({
-    mutationFn: deleteItem,
-    onSuccess: async () => {
+    mutationFn: ({ id }: { id: string; snapshot: Item; actionId: number }) => deleteItem(id),
+    onSuccess: async (_result, variables) => {
       setDeleteTarget(null);
       await invalidateItemData();
       await queryClient.invalidateQueries({ queryKey: ["trash"] });
-      showActionFeedback("메모를 삭제했습니다.");
+      if (latestActionByItemRef.current.get(variables.id) === variables.actionId) {
+        showUndoFeedback("메모를 삭제했습니다.", { itemId: variables.id, kind: "delete", snapshot: variables.snapshot }, variables.actionId);
+      }
     },
     onError: () => showActionFeedback("메모를 삭제하지 못했습니다.", "error"),
   });
@@ -367,7 +458,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   });
 
   const updateDueMutation = useMutation({
-    mutationFn: ({ id, dueAt }: { id: string; dueAt: string | null }) =>
+    mutationFn: ({ id, dueAt }: { id: string; dueAt: string | null; snapshot: Item; actionId: number }) =>
       updateItemFields(id, { due_at: dueAt }),
     onSuccess: async (updatedItem: Item, variables) => {
       queryClient.setQueriesData<Item[]>(
@@ -394,17 +485,28 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             : items?.filter((item) => item.id !== updatedItem.id),
       );
       await invalidateItemData();
-      showActionFeedback(
-        variables.dueAt ? "Today에 추가했습니다." : "기한을 제거했습니다.",
-      );
+      if (latestActionByItemRef.current.get(updatedItem.id) === variables.actionId) {
+        showUndoFeedback("변경을 적용했습니다.", { itemId: updatedItem.id, kind: "due", snapshot: variables.snapshot }, variables.actionId);
+      }
     },
     onError: () => showActionFeedback("기한을 변경하지 못했습니다.", "error"),
   });
 
   const classifyItemMutation = useMutation({
-    mutationFn: ({ id, kind }: { id: string; kind: "inbox" | "note" | "task" | "purchase" | "print_job" }) =>
+    mutationFn: ({ id, kind }: MoveItemVariables) =>
       updateItemFields(id, { kind }),
+    onMutate: async ({ id, sourceView }) => {
+      if (movingItemIdsRef.current.has(id)) return { snapshots: [] } satisfies MoveItemContext;
+      movingItemIdsRef.current.add(id);
+      await queryClient.cancelQueries({ queryKey: itemQueryKeys.all });
+      const snapshots = snapshotItemQueries();
+      if (sourceView !== "today") {
+        removeItemFromViewCache(sourceView, id);
+      }
+      return { snapshots } satisfies MoveItemContext;
+    },
     onSuccess: async (updatedItem: Item, variables) => {
+      movingItemIdsRef.current.delete(updatedItem.id);
       queryClient.setQueryData<Item[]>(
         itemQueryKeys.list(inboxFilters),
         (items) =>
@@ -463,9 +565,17 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
         purchase: "Purchase",
         print_job: "Print Queue",
       } as const;
-      showActionFeedback(`${labels[variables.kind]}로 이동했습니다.`);
+      if (latestActionByItemRef.current.get(updatedItem.id) === variables.actionId) {
+        showUndoFeedback(`${labels[variables.kind]}로 이동했습니다.`, { itemId: updatedItem.id, kind: "move", snapshot: variables.snapshot }, variables.actionId);
+      }
     },
-    onError: () => showActionFeedback("이동하지 못했습니다.", "error"),
+    onError: (_error, variables, context) => {
+      movingItemIdsRef.current.delete(variables.id);
+      context?.snapshots.forEach(([queryKey, items]) => {
+        queryClient.setQueryData(queryKey, items);
+      });
+      showActionFeedback("이동하지 못했습니다.", "error");
+    },
   });
 
   const syncStatusItemCache = (updatedItem: Item) => {
@@ -519,14 +629,31 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
 
 
   const archiveItemMutation = useMutation({
-    mutationFn: (id: string) =>
+    mutationFn: ({ id }: ArchiveItemVariables) =>
       updateItemFields(id, { status: "archived" }),
-    onSuccess: async (updatedItem: Item) => {
+    onMutate: async ({ id, sourceView }) => {
+      if (movingItemIdsRef.current.has(id)) return { snapshots: [] } satisfies MoveItemContext;
+      movingItemIdsRef.current.add(id);
+      await queryClient.cancelQueries({ queryKey: itemQueryKeys.all });
+      const snapshots = snapshotItemQueries();
+      removeItemFromViewCache(sourceView, id);
+      return { snapshots } satisfies MoveItemContext;
+    },
+    onSuccess: async (updatedItem: Item, variables: ArchiveItemVariables) => {
+      movingItemIdsRef.current.delete(updatedItem.id);
       syncStatusItemCache(updatedItem);
       await invalidateItemData();
-      showActionFeedback("Archive로 이동했습니다.");
+      if (latestActionByItemRef.current.get(updatedItem.id) === variables.actionId) {
+        showUndoFeedback("Archive로 이동했습니다.", { itemId: updatedItem.id, kind: "archive", snapshot: variables.snapshot }, variables.actionId);
+      }
     },
-    onError: () => showActionFeedback("Archive로 이동하지 못했습니다.", "error"),
+    onError: (_error, variables, context) => {
+      movingItemIdsRef.current.delete(variables.id);
+      context?.snapshots.forEach(([queryKey, items]) => {
+        queryClient.setQueryData(queryKey, items);
+      });
+      showActionFeedback("Archive로 이동하지 못했습니다.", "error");
+    },
   });
 
   const restoreArchivedItemMutation = useMutation({
@@ -597,6 +724,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     (item) => item.due_at !== null && item.due_at < todayRange.dueFrom,
   ) ?? [];
   const todoCount = todoQuery.isSuccess ? todoQuery.data.length : null;
+  const todoItems = todoQuery.data ? sortTodoItems(todoQuery.data) : [];
   const archiveCount = archiveQuery.isSuccess ? archiveQuery.data.length : null;
   const activeNavigationItem =
     navigationGroups
@@ -686,17 +814,80 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       return;
     }
 
-    deleteItemMutation.mutate(deleteTarget.id);
+    const actionId = beginUndoableAction(deleteTarget.id);
+    deleteItemMutation.mutate({ id: deleteTarget.id, snapshot: deleteTarget, actionId });
   };
 
-  const classifyItem = (item: Item, kind: "inbox" | "note" | "task" | "purchase" | "print_job") =>
-    classifyItemMutation.mutateAsync({ id: item.id, kind });
+  const classifyItem = (item: Item, kind: "inbox" | "note" | "task" | "purchase" | "print_job") => {
+    if (movingItemIdsRef.current.has(item.id)) return Promise.resolve();
+    const actionId = beginUndoableAction(item.id);
+    return classifyItemMutation.mutateAsync({ id: item.id, kind, sourceView: activeView, snapshot: item, actionId });
+  };
+
+  const archiveItem = (item: Item) => {
+    if (movingItemIdsRef.current.has(item.id)) return Promise.resolve();
+    const actionId = beginUndoableAction(item.id);
+    return archiveItemMutation.mutateAsync({ id: item.id, sourceView: activeView, snapshot: item, actionId });
+  };
 
   const setItemDueToday = (item: Item) =>
-    updateDueMutation.mutateAsync({ id: item.id, dueAt: todayRange.dueFrom });
+    updateDueMutation.mutateAsync({ id: item.id, dueAt: todayRange.dueFrom, snapshot: item, actionId: beginUndoableAction(item.id) });
 
   const clearItemDue = (item: Item) =>
-    updateDueMutation.mutateAsync({ id: item.id, dueAt: null });
+    updateDueMutation.mutateAsync({ id: item.id, dueAt: null, snapshot: item, actionId: beginUndoableAction(item.id) });
+
+  const getCachedItem = (itemId: string) => {
+    for (const [, items] of queryClient.getQueriesData<Item[]>({ queryKey: itemQueryKeys.all })) {
+      const item = items?.find((candidate) => candidate.id === itemId);
+      if (item) return item;
+    }
+    return undefined;
+  };
+
+  const handleUndo = async () => {
+    const action = actionFeedback?.undo;
+    if (!action) return;
+    if (latestActionByItemRef.current.get(action.itemId) !== action.actionId) {
+      showActionFeedback("실행 취소할 수 없습니다.", "error");
+      return;
+    }
+    const currentItem = getCachedItem(action.itemId);
+    if (currentItem && action.kind !== "delete" && currentItem.version !== action.snapshot.version + 1) {
+      await queryClient.refetchQueries({ queryKey: itemQueryKeys.all });
+      showActionFeedback("더 새로운 변경이 있어 실행 취소할 수 없습니다.", "error");
+      return;
+    }
+    setActionFeedback(null);
+    setFeedbackExpiresAt(null);
+    try {
+      if (action.kind === "delete") {
+        await restoreItem(action.itemId);
+        await Promise.all([
+          invalidateItemData(),
+          queryClient.invalidateQueries({ queryKey: ["trash"] }),
+        ]);
+      } else {
+        await updateItemFields(action.itemId, {
+          kind: action.snapshot.kind,
+          status: action.snapshot.status,
+          project_id: action.snapshot.project_id,
+          due_at: action.snapshot.due_at,
+          properties_json: action.snapshot.properties_json,
+          position: action.snapshot.position,
+          triaged_at: action.snapshot.triaged_at,
+        });
+        await invalidateItemData();
+      }
+      showActionFeedback("실행 취소했습니다.");
+    } catch {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: itemQueryKeys.all }),
+        queryClient.refetchQueries({ queryKey: itemCountQueryKeys.all }),
+        queryClient.refetchQueries({ queryKey: ["trash"] }),
+      ]);
+      showActionFeedback("실행 취소하지 못했습니다.", "error");
+    }
+  };
 
   return (
     <>
@@ -750,7 +941,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onSaveEditing={saveEditing}
             onClassify={(item) => classifyItem(item, "note")}
             onMoveToTodo={(item) => classifyItem(item, "task")}
-            onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
+            onArchive={archiveItem}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
             onSetToday={setItemDueToday}
@@ -786,7 +977,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onSaveEditing={saveEditing}
             onMoveToTodo={(item) => classifyItem(item, "task")}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
-            onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
+            onArchive={archiveItem}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
             onSetToday={setItemDueToday}
@@ -797,7 +988,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             viewTitle="Todo"
             viewDescription="Active tasks that still need your attention."
             emptyDescription="오늘로 지정하거나 Task로 분류한 메모가 여기에 표시됩니다."
-            items={todoQuery.data ?? []}
+            items={todoItems}
             notesCount={todoCount}
             isPending={todoQuery.isPending}
             isError={todoQuery.isError}
@@ -825,7 +1016,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onSaveEditing={saveEditing}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
             onMoveToNotes={(item) => classifyItem(item, "note")}
-            onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
+            onArchive={archiveItem}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
             onSetToday={setItemDueToday}
@@ -867,7 +1058,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
             onSetToday={setItemDueToday}
-            onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
+            onArchive={archiveItem}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "purchase" ? (
@@ -900,7 +1091,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onSaveEditing={saveEditing}
             onMoveToTodo={(item) => classifyItem(item, "task")}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
-            onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
+            onArchive={archiveItem}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "print-queue" ? (
@@ -917,7 +1108,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onUpdateItem={(id, input) => updateItemMutation.mutateAsync({ id, input })}
             onCreate={() => createPrintJobMutation.mutate()}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
-            onArchive={(item) => archiveItemMutation.mutateAsync(item.id)}
+            onArchive={archiveItem}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "archive" ? (
@@ -975,7 +1166,11 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       </AppShell>
       {actionFeedback && (
         <div className={`action-feedback action-feedback--${actionFeedback.tone}`} role="status">
-          {actionFeedback.message}
+          <span>{actionFeedback.message}</span>
+          {actionFeedback.undo && (
+            <button type="button" onClick={() => void handleUndo()}>실행 취소</button>
+          )}
+          <span aria-label="Remaining time">{Math.ceil(feedbackRemainingMs / 1000)}s</span>
         </div>
       )}
       {deleteTarget && (

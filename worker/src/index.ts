@@ -80,6 +80,7 @@ type UpdateItemRequest = {
   status?: unknown;
   project_id?: unknown;
   due_at?: unknown;
+  triaged_at?: unknown;
   properties_json?: unknown;
   position?: unknown;
 };
@@ -461,6 +462,7 @@ app.patch("/api/items/:id", async (c) => {
     "project_id",
   );
   const hasDueAt = Object.prototype.hasOwnProperty.call(payload, "due_at");
+  const hasTriagedAt = Object.prototype.hasOwnProperty.call(payload, "triaged_at");
   const hasPropertiesJson = Object.prototype.hasOwnProperty.call(
     payload,
     "properties_json",
@@ -492,8 +494,10 @@ app.patch("/api/items/:id", async (c) => {
     assignments.push("kind = ?");
     bindings.push(kind);
 
-    assignments.push("triaged_at = ?");
-    bindings.push(new Date().toISOString());
+    if (!hasTriagedAt) {
+      assignments.push("triaged_at = ?");
+      bindings.push(new Date().toISOString());
+    }
   }
 
   if (hasStatus) {
@@ -539,6 +543,15 @@ app.patch("/api/items/:id", async (c) => {
         ? new Date(payload.due_at).toISOString()
         : null,
     );
+  }
+
+  if (hasTriagedAt) {
+    if (payload.triaged_at !== null && typeof payload.triaged_at !== "string") {
+      return c.json({ error: "invalid_triaged_at" }, 400);
+    }
+
+    assignments.push("triaged_at = ?");
+    bindings.push(payload.triaged_at === null ? null : new Date(payload.triaged_at as string).toISOString());
   }
 
   if (hasPropertiesJson) {

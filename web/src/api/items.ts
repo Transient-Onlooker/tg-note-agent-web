@@ -54,6 +54,7 @@ export type UpdateItemInput = {
   status?: ItemStatus;
   project_id?: string | null;
   due_at?: string | null;
+  triaged_at?: string | null;
   properties_json?: string;
   position?: number;
 };

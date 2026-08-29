@@ -1975,3 +1975,24 @@
   .note-card__actions:not(.is-open) .note-card__action { pointer-events: none; }
   .note-card__actions.is-open .note-card__action { opacity: 1; pointer-events: auto; }
 }
+
+.action-feedback {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.action-feedback button {
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.action-feedback button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
