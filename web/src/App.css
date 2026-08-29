@@ -904,14 +904,15 @@
 }
 
 .note-card__edit,
-.note-card__classify,
+.note-card__notes,
+.note-card__inbox,
 .note-card__todo,
 .note-card__archive,
 .note-card__purchase,
 .note-card__print-queue,
 .note-card__today,
 .note-card__delete {
-  position: absolute;
+  position: static;
   top: 14px;
   display: grid;
   place-items: center;
@@ -929,7 +930,15 @@
     opacity 140ms ease;
 }
 
-.note-card__actions,
+.note-card__actions {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .note-card__action-menu {
   display: contents;
 }
@@ -938,46 +947,23 @@
   display: none;
 }
 
-.note-card__edit {
-  right: 48px;
-}
-
-.note-card__todo {
-  right: 82px;
-}
-
-.note-card__classify {
-  right: 116px;
-}
-
-.note-card__archive {
-  right: 150px;
-}
-
-.note-card__purchase {
-  right: 184px;
-}
-
-.note-card__print-queue {
-  right: 218px;
-}
-
-.note-card__today {
-  right: 252px;
-}
-
-.note-card__today-clear {
-  right: 286px;
-}
-
-.note-card__delete {
-  right: 14px;
-}
+.note-card__inbox { order: 1; }
+.note-card__todo { order: 2; }
+.note-card__today,
+.note-card__today-clear { order: 3; }
+.note-card__notes { order: 4; }
+.note-card__print-queue { order: 5; }
+.note-card__purchase { order: 6; }
+.note-card__archive { order: 7; }
+.note-card__edit { order: 8; }
+.note-card__delete { order: 9; }
 
 .note-card:hover .note-card__edit,
 .note-card__edit:focus-visible,
-.note-card:hover .note-card__classify,
-.note-card__classify:focus-visible,
+.note-card:hover .note-card__notes,
+.note-card__notes:focus-visible,
+.note-card:hover .note-card__inbox,
+.note-card__inbox:focus-visible,
 .note-card:hover .note-card__todo,
 .note-card__todo:focus-visible,
 .note-card:hover .note-card__archive,
@@ -998,7 +984,8 @@
   background: var(--accent-soft);
 }
 
-.note-card__classify:hover:not(:disabled) {
+.note-card__notes:hover:not(:disabled),
+.note-card__inbox:hover:not(:disabled) {
   color: var(--accent);
   background: var(--accent-soft);
 }
@@ -1103,7 +1090,8 @@
   background: var(--danger);
 }
 
-.note-card__classify:disabled {
+.note-card__notes:disabled,
+.note-card__inbox:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }

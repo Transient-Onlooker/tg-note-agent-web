@@ -281,7 +281,7 @@ export function NotesView({
                   </CardActionButton>
                   {onMoveToNotes && (
                     <CardActionButton
-                      className="note-card__classify"
+                      className="note-card__notes"
                       aria-label="Notes로 이동"
                       onClick={() => onMoveToNotes(item)}
                     >
@@ -299,7 +299,7 @@ export function NotesView({
                   )}
                   {onMoveToInbox && (
                     <CardActionButton
-                      className="note-card__classify"
+                      className="note-card__inbox"
                       aria-label="Inbox로 이동"
                       onClick={() => onMoveToInbox(item)}
                     >

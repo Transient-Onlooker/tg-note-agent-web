@@ -337,7 +337,7 @@ export function InboxView({
 
               {editingItemId !== item.id && (
                 <CardActionButton
-                  className="note-card__classify"
+                  className="note-card__notes"
                   aria-label="Notes로 이동"
                   onClick={() => onClassify(item)}
                 >

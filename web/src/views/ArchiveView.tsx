@@ -243,7 +243,7 @@ export function ArchiveView({
                     <Icon name="edit" size={16} />
                   </CardActionButton>
                   <CardActionButton
-                    className="note-card__classify"
+                    className="note-card__inbox"
                     aria-label="활성 메모로 복원"
                     onClick={() => onRestore(item)}
                   >
