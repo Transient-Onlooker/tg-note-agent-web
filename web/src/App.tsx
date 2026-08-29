@@ -21,6 +21,8 @@ import {
   restoreItem,
   updateItemFields,
   type Item,
+  type ItemKind,
+  type ReferenceType,
   type UpdateItemInput,
 } from "./api/items";
 import {
@@ -72,7 +74,9 @@ type UpdateItemVariables = {
 };
 type MoveItemVariables = {
   id: string;
-  kind: "inbox" | "note" | "task" | "purchase" | "print_job";
+  kind: "inbox" | "note" | "task" | "purchase" | "print_job" | "reference";
+  referenceType?: ReferenceType;
+  propertiesJson?: string;
   sourceView: ViewId;
   snapshot: Item;
   actionId: number;
@@ -92,6 +96,39 @@ function hasReferenceType(item: Item, referenceType: "modeling" | "question") {
   } catch {
     return false;
   }
+}
+
+function getPropertiesJsonForMove(
+  item: Item,
+  targetKind: ItemKind,
+  referenceType?: ReferenceType,
+) {
+  let properties: Record<string, unknown>;
+
+  try {
+    const parsed: unknown = JSON.parse(item.properties_json);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return targetKind === "reference" && referenceType
+        ? JSON.stringify({ reference_type: referenceType })
+        : undefined;
+    }
+    properties = { ...(parsed as Record<string, unknown>) };
+  } catch {
+    return targetKind === "reference" && referenceType
+      ? JSON.stringify({ reference_type: referenceType })
+      : undefined;
+  }
+
+  if (targetKind === "reference" && referenceType) {
+    return JSON.stringify({ ...properties, reference_type: referenceType });
+  }
+
+  if (item.kind === "reference" && "reference_type" in properties) {
+    delete properties.reference_type;
+    return JSON.stringify(properties);
+  }
+
+  return undefined;
 }
 
 function sortTodoItems(items: Item[]) {
@@ -353,6 +390,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       case "purchase": return itemQueryKeys.list(purchaseFilters);
       case "print-queue": return itemQueryKeys.list(printQueueFilters);
       case "archive": return itemQueryKeys.list(archiveFilters);
+      case "modeling":
+      case "question": return itemQueryKeys.list(referenceFilters);
       default: return null;
     }
   };
@@ -520,8 +559,11 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   });
 
   const classifyItemMutation = useMutation({
-    mutationFn: ({ id, kind }: MoveItemVariables) =>
-      updateItemFields(id, { kind }),
+    mutationFn: ({ id, kind, propertiesJson }: MoveItemVariables) =>
+      updateItemFields(id, {
+        kind,
+        ...(propertiesJson === undefined ? {} : { properties_json: propertiesJson }),
+      }),
     onMutate: async ({ id, sourceView }) => {
       if (movingItemIdsRef.current.has(id)) return { snapshots: [] } satisfies MoveItemContext;
       movingItemIdsRef.current.add(id);
@@ -584,6 +626,16 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
               ]
             : items?.filter((item) => item.id !== updatedItem.id),
       );
+      queryClient.setQueryData<Item[]>(
+        itemQueryKeys.list(referenceFilters),
+        (items) =>
+          updatedItem.kind === "reference" && updatedItem.status === "active"
+            ? [
+                updatedItem,
+                ...(items ?? []).filter((item) => item.id !== updatedItem.id),
+              ]
+            : items?.filter((item) => item.id !== updatedItem.id),
+      );
       await invalidateItemData();
       const labels = {
         inbox: "Inbox",
@@ -591,6 +643,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
         task: "Todo",
         purchase: "Purchase",
         print_job: "Print Queue",
+        reference: "Reference",
       } as const;
       if (latestActionByItemRef.current.get(updatedItem.id) === variables.actionId) {
         showUndoFeedback(`${labels[variables.kind]}로 이동했습니다.`, { itemId: updatedItem.id, kind: "move", snapshot: variables.snapshot }, variables.actionId);
@@ -651,6 +704,10 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     updateList(
       itemQueryKeys.list(printQueueFilters),
       updatedItem.status === "active" && updatedItem.kind === "print_job",
+    );
+    updateList(
+      itemQueryKeys.list(referenceFilters),
+      updatedItem.status === "active" && updatedItem.kind === "reference",
     );
   };
 
@@ -845,10 +902,22 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     deleteItemMutation.mutate({ id: deleteTarget.id, snapshot: deleteTarget, actionId });
   };
 
-  const classifyItem = (item: Item, kind: "inbox" | "note" | "task" | "purchase" | "print_job") => {
+  const classifyItem = (
+    item: Item,
+    kind: "inbox" | "note" | "task" | "purchase" | "print_job" | "reference",
+    referenceType?: ReferenceType,
+  ) => {
     if (movingItemIdsRef.current.has(item.id)) return Promise.resolve();
     const actionId = beginUndoableAction(item.id);
-    return classifyItemMutation.mutateAsync({ id: item.id, kind, sourceView: activeView, snapshot: item, actionId });
+    return classifyItemMutation.mutateAsync({
+      id: item.id,
+      kind,
+      referenceType,
+      propertiesJson: getPropertiesJsonForMove(item, kind, referenceType),
+      sourceView: activeView,
+      snapshot: item,
+      actionId,
+    });
   };
 
   const archiveItem = (item: Item) => {
@@ -943,10 +1012,32 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     onArchive: archiveItem,
     onPurchase: (item: Item) => classifyItem(item, "purchase"),
     onSendToPrintQueue: (item: Item) => classifyItem(item, "print_job"),
+    onMoveToModeling: activeView === "question"
+      ? (item: Item) => classifyItem(item, "reference", "modeling")
+      : undefined,
+    onMoveToQuestion: activeView === "modeling"
+      ? (item: Item) => classifyItem(item, "reference", "question")
+      : undefined,
     onSetToday: setItemDueToday,
     onClearDue: clearItemDue,
     onDeleteRequest: openDeleteConfirmation,
   };
+
+  const activeViewCount = (() => {
+    switch (activeView) {
+      case "inbox": return inboxCount;
+      case "todo": return todoCount;
+      case "today": return todayCount;
+      case "notes": return notesCount;
+      case "print-queue": return printQueueQuery.isSuccess ? printQueueQuery.data.length : null;
+      case "purchase": return purchaseQuery.isSuccess ? purchaseQuery.data.length : null;
+      case "archive": return archiveCount;
+      case "trash": return trashQuery.isSuccess ? trashQuery.data.length : null;
+      case "modeling":
+      case "question": return referenceQuery.isSuccess ? referenceItems.length : null;
+      default: return null;
+    }
+  })();
 
   const createReference = (body: string) =>
     createReferenceMutation.mutateAsync({
@@ -958,6 +1049,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     <>
       <AppShell
         activeView={activeView}
+        activeViewCount={activeViewCount}
         isSidebarOpen={isSidebarOpen}
         counts={itemCountsQuery.data ?? null}
         onNavigate={handleNavigation}
@@ -1009,6 +1101,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onArchive={archiveItem}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
+            onMoveToModeling={(item) => classifyItem(item, "reference", "modeling")}
+            onMoveToQuestion={(item) => classifyItem(item, "reference", "question")}
             onSetToday={setItemDueToday}
             onDeleteRequest={openDeleteConfirmation}
           />
@@ -1046,6 +1140,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onArchive={archiveItem}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
+            onMoveToModeling={(item) => classifyItem(item, "reference", "modeling")}
+            onMoveToQuestion={(item) => classifyItem(item, "reference", "question")}
             onSetToday={setItemDueToday}
             onDeleteRequest={openDeleteConfirmation}
           />
@@ -1054,6 +1150,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             viewTitle="Todo"
             viewDescription="Active tasks that still need your attention."
             emptyDescription="오늘로 지정하거나 Task로 분류한 메모가 여기에 표시됩니다."
+            showCreatedAt={false}
             items={todoItems}
             notesCount={todoCount}
             isPending={todoQuery.isPending}
@@ -1085,6 +1182,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onArchive={archiveItem}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
+            onMoveToModeling={(item) => classifyItem(item, "reference", "modeling")}
+            onMoveToQuestion={(item) => classifyItem(item, "reference", "question")}
             onSetToday={setItemDueToday}
             onClearDue={clearItemDue}
             onDeleteRequest={openDeleteConfirmation}
@@ -1123,6 +1222,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onMoveToNotes={(item) => classifyItem(item, "note")}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
+            onMoveToModeling={(item) => classifyItem(item, "reference", "modeling")}
+            onMoveToQuestion={(item) => classifyItem(item, "reference", "question")}
             onSetToday={setItemDueToday}
             onArchive={archiveItem}
             onDeleteRequest={openDeleteConfirmation}
@@ -1174,6 +1275,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onMoveToTodo={(item) => classifyItem(item, "task")}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
             onArchive={archiveItem}
+            onMoveToModeling={(item) => classifyItem(item, "reference", "modeling")}
+            onMoveToQuestion={(item) => classifyItem(item, "reference", "question")}
             onDeleteRequest={openDeleteConfirmation}
           />
         ) : activeView === "print-queue" ? (

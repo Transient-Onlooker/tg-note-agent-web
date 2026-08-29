@@ -230,7 +230,7 @@ export function ArchiveView({
                   aria-expanded={openActionMenuId === item.id}
                   onClick={() => setOpenActionMenuId((current) => current === item.id ? null : item.id)}
                 >
-                  <Icon name="menu" size={18} />
+                  <Icon name="more" size={18} />
                 </button>
                 <div className="note-card__action-menu" onClickCapture={() => setOpenActionMenuId(null)}>
               {editingItemId !== item.id && (

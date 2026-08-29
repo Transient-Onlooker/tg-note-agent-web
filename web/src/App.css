@@ -2037,3 +2037,126 @@
   opacity: .5;
   cursor: not-allowed;
 }
+
+
+.note-card__modeling,
+.note-card__question {
+  position: static;
+  top: 14px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--subtle);
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  opacity: 0;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    opacity 140ms ease;
+}
+
+.note-card__modeling { order: 5; }
+.note-card__question { order: 6; }
+.note-card__print-queue { order: 7; }
+.note-card__purchase { order: 8; }
+.note-card__archive { order: 9; }
+.note-card__edit { order: 10; }
+.note-card__delete { order: 11; }
+
+.note-card:hover .note-card__modeling,
+.note-card__modeling:focus-visible,
+.note-card:hover .note-card__question,
+.note-card__question:focus-visible {
+  opacity: 1;
+}
+
+@media (min-width: 561px) {
+  .note-card__menu-toggle {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    color: var(--subtle);
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    opacity: 0;
+    transition:
+      color 140ms ease,
+      background-color 140ms ease,
+      opacity 140ms ease;
+  }
+
+  .note-card:hover .note-card__menu-toggle,
+  .note-card__menu-toggle:focus-visible,
+  .note-card__actions.is-open .note-card__menu-toggle {
+    opacity: 1;
+  }
+
+  .note-card__menu-toggle:hover,
+  .note-card__menu-toggle:focus-visible,
+  .note-card__actions.is-open .note-card__menu-toggle {
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .note-card__action-menu {
+    position: absolute;
+    top: 32px;
+    right: 0;
+    z-index: 10;
+    display: none;
+    grid-template-columns: repeat(3, 28px);
+    gap: 4px;
+    width: max-content;
+    padding: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 9px;
+    box-shadow: var(--shadow-md);
+  }
+
+  .note-card__actions.is-open .note-card__action-menu {
+    display: grid;
+  }
+
+  .note-card__action-menu .note-card__action {
+    position: static;
+    display: grid;
+    width: 28px;
+    height: 28px;
+    opacity: 1;
+  }
+
+  .note-card__action-menu .note-card__edit,
+  .note-card__action-menu .note-card__today,
+  .note-card__action-menu .note-card__delete {
+    display: none;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) and (min-width: 561px) {
+  .note-card__actions.is-open .note-card__menu-toggle {
+    pointer-events: auto;
+    opacity: 1;
+  }
+}
+
+
+@media (max-width: 560px) {
+  .note-card__actions > .note-card__action {
+    display: none;
+  }
+}
+
+@media (min-width: 561px) {
+  .archive-view .note-card__action-menu .note-card__edit,
+  .archive-view .note-card__action-menu .note-card__delete {
+    display: grid;
+  }
+}

@@ -42,6 +42,8 @@ type InboxViewProps = {
   onArchive: (item: Item) => Promise<unknown>;
   onPurchase: (item: Item) => Promise<unknown>;
   onSendToPrintQueue: (item: Item) => Promise<unknown>;
+  onMoveToModeling: (item: Item) => Promise<unknown>;
+  onMoveToQuestion: (item: Item) => Promise<unknown>;
   onSetToday: (item: Item) => Promise<unknown>;
 
   onDeleteRequest: (item: Item) => void;
@@ -76,6 +78,8 @@ export function InboxView({
   onArchive,
   onPurchase,
   onSendToPrintQueue,
+  onMoveToModeling,
+  onMoveToQuestion,
   onSetToday,
   onDeleteRequest,
 }: InboxViewProps) {
@@ -308,6 +312,14 @@ export function InboxView({
                       <time dateTime={item.created_at}>
                         {formatCreatedAt(item.created_at)}
                       </time>
+                      {item.due_at !== null && (
+                        <>
+                          <span className="meta-separator" aria-hidden="true" />
+                          <time dateTime={item.due_at}>
+                            기한 {formatCreatedAt(item.due_at)}
+                          </time>
+                        </>
+                      )}
                     </div>
                   </>
                 )}
@@ -315,6 +327,33 @@ export function InboxView({
 
               <div className={`note-card__actions${openActionMenuId === item.id ? " is-open" : ""}`}
                 onPointerDown={(event) => handleActionPointerDown(event, item.id)}>
+                {editingItemId !== item.id && (
+                  <CardActionButton
+                    className="note-card__edit"
+                    aria-label="메모 수정"
+                    onClick={() => onStartEditing(item)}
+                  >
+                    <Icon name="edit" size={16} />
+                  </CardActionButton>
+                )}
+
+                {editingItemId !== item.id && (
+                  <CardActionButton
+                    className="note-card__today"
+                    aria-label="오늘로 지정"
+                    onClick={() => onSetToday(item)}
+                  >
+                    <Icon name="today" size={16} />
+                  </CardActionButton>
+                )}
+
+                <CardActionButton
+                  className="note-card__delete"
+                  aria-label="메모 삭제"
+                  onClick={() => onDeleteRequest(item)}
+                >
+                  <Icon name="delete" size={16} />
+                </CardActionButton>
                 <button
                   className="note-card__menu-toggle"
                   type="button"
@@ -322,9 +361,27 @@ export function InboxView({
                   aria-expanded={openActionMenuId === item.id}
                   onClick={() => setOpenActionMenuId((current) => current === item.id ? null : item.id)}
                 >
-                  <Icon name="menu" size={18} />
+                  <Icon name="more" size={18} />
                 </button>
                 <div className="note-card__action-menu" onClickCapture={() => setOpenActionMenuId(null)}>
+                  {editingItemId !== item.id && (
+                    <>
+                      <CardActionButton
+                        className="note-card__modeling"
+                        aria-label="3D 모델링으로 이동"
+                        onClick={() => onMoveToModeling(item)}
+                      >
+                        <Icon name="modeling" size={16} />
+                      </CardActionButton>
+                      <CardActionButton
+                        className="note-card__question"
+                        aria-label="궁금증으로 이동"
+                        onClick={() => onMoveToQuestion(item)}
+                      >
+                        <Icon name="question" size={16} />
+                      </CardActionButton>
+                    </>
+                  )}
               {editingItemId !== item.id && (
                 <CardActionButton
                   className="note-card__edit"

@@ -12,6 +12,7 @@ type NotesViewProps = {
   viewDescription?: string;
   emptyDescription?: string;
   showDueControls?: boolean;
+  showCreatedAt?: boolean;
   items: Item[];
   overdueItems?: Item[];
   notesCount: number | null;
@@ -38,6 +39,8 @@ type NotesViewProps = {
   onPurchase?: (item: Item) => Promise<unknown>;
   onDeleteRequest: (item: Item) => void;
   onSendToPrintQueue?: (item: Item) => Promise<unknown>;
+  onMoveToModeling?: (item: Item) => Promise<unknown>;
+  onMoveToQuestion?: (item: Item) => Promise<unknown>;
   onSetToday?: (item: Item) => Promise<unknown>;
   onClearDue?: (item: Item) => Promise<unknown>;
 };
@@ -72,9 +75,12 @@ export function NotesView({
   onPurchase,
   onDeleteRequest,
   onSendToPrintQueue,
+  onMoveToModeling,
+  onMoveToQuestion,
   onSetToday,
   onClearDue,
   showDueControls = true,
+  showCreatedAt = true,
 }: NotesViewProps) {
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
 
@@ -253,10 +259,22 @@ export function NotesView({
                     <p className="note-card__body">{item.body}</p>
                     <div className="note-card__meta">
                       <span className="kind-badge">{item.kind}</span>
-                      <span className="meta-separator" aria-hidden="true" />
-                      <time dateTime={item.created_at}>
-                        {formatCreatedAt(item.created_at)}
-                      </time>
+                      {showDueControls && item.due_at !== null && (
+                        <>
+                          <span className="meta-separator" aria-hidden="true" />
+                          <time dateTime={item.due_at}>
+                            기한 {formatCreatedAt(item.due_at)}
+                          </time>
+                        </>
+                      )}
+                      {showCreatedAt && (
+                        <>
+                          <span className="meta-separator" aria-hidden="true" />
+                          <time dateTime={item.created_at}>
+                            {formatCreatedAt(item.created_at)}
+                          </time>
+                        </>
+                      )}
                     </div>
                   </>
                 )}
@@ -264,6 +282,43 @@ export function NotesView({
 
               <div className={`note-card__actions${openActionMenuId === item.id ? " is-open" : ""}`}
                 onPointerDown={(event) => handleActionPointerDown(event, item.id)}>
+                {editingItemId !== item.id && (
+                  <CardActionButton
+                    className="note-card__edit"
+                    aria-label="메모 수정"
+                    onClick={() => onStartEditing(item)}
+                  >
+                    <Icon name="edit" size={16} />
+                  </CardActionButton>
+                )}
+
+                {showDueControls && onSetToday && (!overdueItems || overdueItemIds.has(item.id)) && (
+                  <CardActionButton
+                    className="note-card__today note-card__today-defer"
+                    aria-label="오늘로 지정"
+                    onClick={() => onSetToday(item)}
+                  >
+                    <Icon name="today" size={16} />
+                  </CardActionButton>
+                )}
+
+                {showDueControls && onClearDue && item.due_at !== null && (
+                  <CardActionButton
+                    className="note-card__today note-card__today-clear"
+                    aria-label="기한 제거"
+                    onClick={() => onClearDue(item)}
+                  >
+                    <Icon name="close" size={16} />
+                  </CardActionButton>
+                )}
+
+                <CardActionButton
+                  className="note-card__delete"
+                  aria-label="메모 삭제"
+                  onClick={() => onDeleteRequest(item)}
+                >
+                  <Icon name="delete" size={16} />
+                </CardActionButton>
                 <button
                   className="note-card__menu-toggle"
                   type="button"
@@ -271,9 +326,31 @@ export function NotesView({
                   aria-expanded={openActionMenuId === item.id}
                   onClick={() => setOpenActionMenuId((current) => current === item.id ? null : item.id)}
                 >
-                  <Icon name="menu" size={18} />
+                  <Icon name="more" size={18} />
                 </button>
                 <div className="note-card__action-menu" onClickCapture={() => setOpenActionMenuId(null)}>
+                  {editingItemId !== item.id && (
+                    <>
+                      {onMoveToModeling && (
+                        <CardActionButton
+                          className="note-card__modeling"
+                          aria-label="3D 모델링으로 이동"
+                          onClick={() => onMoveToModeling(item)}
+                        >
+                          <Icon name="modeling" size={16} />
+                        </CardActionButton>
+                      )}
+                      {onMoveToQuestion && (
+                        <CardActionButton
+                          className="note-card__question"
+                          aria-label="궁금증으로 이동"
+                          onClick={() => onMoveToQuestion(item)}
+                        >
+                          <Icon name="question" size={16} />
+                        </CardActionButton>
+                      )}
+                    </>
+                  )}
               {editingItemId !== item.id && (
                 <>
                   <CardActionButton
