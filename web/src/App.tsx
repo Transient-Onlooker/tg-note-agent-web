@@ -11,6 +11,7 @@ import {
 import {
   createItem,
   createPrintJob,
+  createReferenceItem,
   deleteItem,
   getItemCounts,
   itemQueryKeys,
@@ -43,6 +44,7 @@ import { ArchiveView } from "./views/ArchiveView";
 import { PurchaseView } from "./views/PurchaseView";
 import { PrintQueueView } from "./views/PrintQueueView";
 import { TodayView } from "./views/TodayView";
+import { ReferenceView } from "./views/ReferenceView";
 import {
   getLocalDateKey,
   fromDateTimeInputValue,
@@ -82,6 +84,15 @@ type ArchiveItemVariables = {
   snapshot: Item;
   actionId: number;
 };
+
+function hasReferenceType(item: Item, referenceType: "modeling" | "question") {
+  try {
+    const properties = JSON.parse(item.properties_json) as { reference_type?: unknown };
+    return properties.reference_type === referenceType;
+  } catch {
+    return false;
+  }
+}
 
 function sortTodoItems(items: Item[]) {
   return items
@@ -320,6 +331,13 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     enabled: activeView === "print-queue",
   });
 
+  const referenceFilters = { kind: "reference" as const, status: "active" as const };
+  const referenceQuery = useQuery({
+    queryKey: itemQueryKeys.list(referenceFilters),
+    queryFn: () => listItems(referenceFilters),
+    enabled: activeView === "modeling" || activeView === "question",
+  });
+
   const trashQuery = useQuery({
     queryKey: ["trash"],
     queryFn: listTrash,
@@ -382,6 +400,15 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       showActionFeedback("Print Queue에 작업을 추가했습니다.");
     },
     onError: () => showActionFeedback("작업을 추가하지 못했습니다.", "error"),
+  });
+
+  const createReferenceMutation = useMutation({
+    mutationFn: ({ body, referenceType }: { body: string; referenceType: "modeling" | "question" }) =>
+      createReferenceItem(body, referenceType),
+    onSuccess: async () => {
+      await invalidateItemData();
+    },
+    onError: () => showActionFeedback("저장하지 못했습니다.", "error"),
   });
 
   const updateItemMutation = useMutation({
@@ -889,6 +916,44 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     }
   };
 
+  const referenceItems = referenceQuery.data?.filter((item) =>
+    hasReferenceType(item, activeView === "modeling" ? "modeling" : "question"),
+  ) ?? [];
+  const referenceViewProps = {
+    items: referenceItems,
+    notesCount: referenceQuery.isSuccess ? referenceItems.length : null,
+    isPending: referenceQuery.isPending,
+    isError: referenceQuery.isError,
+    isSuccess: referenceQuery.isSuccess,
+    isFetching: referenceQuery.isFetching,
+    editingItemId,
+    editDraft,
+    editDueAt,
+    editError,
+    isUpdating: updateItemMutation.isPending,
+    deleteError: deleteItemMutation.isError,
+    onRetry: () => { void referenceQuery.refetch(); },
+    onStartEditing: startEditing,
+    onEditDraftChange: (value: string) => { setEditDraft(value); if (editError) setEditError(null); },
+    onEditDueChange: setEditDueAt,
+    onCancelEditing: cancelEditing,
+    onSaveEditing: saveEditing,
+    onMoveToTodo: (item: Item) => classifyItem(item, "task"),
+    onMoveToInbox: (item: Item) => classifyItem(item, "inbox"),
+    onArchive: archiveItem,
+    onPurchase: (item: Item) => classifyItem(item, "purchase"),
+    onSendToPrintQueue: (item: Item) => classifyItem(item, "print_job"),
+    onSetToday: setItemDueToday,
+    onClearDue: clearItemDue,
+    onDeleteRequest: openDeleteConfirmation,
+  };
+
+  const createReference = (body: string) =>
+    createReferenceMutation.mutateAsync({
+      body,
+      referenceType: activeView === "modeling" ? "modeling" : "question",
+    });
+
   return (
     <>
       <AppShell
@@ -949,6 +1014,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
           />
         ) : activeView === "notes" ? (
           <NotesView
+            showDueControls={false}
             items={notesQuery.data ?? []}
             notesCount={notesCount}
             isPending={notesQuery.isPending}
@@ -1061,6 +1127,22 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onArchive={archiveItem}
             onDeleteRequest={openDeleteConfirmation}
           />
+        ) : activeView === "modeling" ? (
+          <ReferenceView
+            {...referenceViewProps}
+            referenceType="modeling"
+            onCreate={createReference}
+            isCreating={createReferenceMutation.isPending}
+            createError={createReferenceMutation.isError}
+          />
+        ) : activeView === "question" ? (
+          <ReferenceView
+            {...referenceViewProps}
+            referenceType="question"
+            onCreate={createReference}
+            isCreating={createReferenceMutation.isPending}
+            createError={createReferenceMutation.isError}
+          />
         ) : activeView === "purchase" ? (
           <PurchaseView
             items={purchaseQuery.data ?? []}
@@ -1097,6 +1179,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
         ) : activeView === "print-queue" ? (
           <PrintQueueView
             items={printQueueQuery.data ?? []}
+            printQueueCount={printQueueQuery.isSuccess ? printQueueQuery.data.length : null}
             isPending={printQueueQuery.isPending}
             isError={printQueueQuery.isError}
             isFetching={printQueueQuery.isFetching}

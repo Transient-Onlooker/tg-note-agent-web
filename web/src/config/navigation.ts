@@ -3,6 +3,8 @@ export type ViewId =
   | "todo"
   | "today"
   | "notes"
+  | "modeling"
+  | "question"
   | "projects"
   | "print-queue"
   | "purchase"
@@ -81,4 +83,10 @@ export const navigationGroups: NavigationGroup[] = [
       },
     ],
   },
+];
+
+
+export const moreNavigationItems: NavigationItem[] = [
+  { id: "modeling", label: "3D 모델링", description: "3D 모델링 참고 자료를 모아봅니다." },
+  { id: "question", label: "궁금증", description: "나중에 확인할 질문을 모아봅니다." },
 ];

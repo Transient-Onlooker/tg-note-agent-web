@@ -1996,3 +1996,44 @@
   outline: 2px solid currentColor;
   outline-offset: 2px;
 }
+
+.nav-more__items {
+  padding-left: 14px;
+}
+
+.nav-more__toggle.is-open {
+  color: var(--accent);
+}
+
+.reference-capture {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 22px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.reference-capture textarea {
+  grid-column: 1 / -1;
+  width: 100%;
+  resize: vertical;
+}
+
+.reference-capture button {
+  min-height: 38px;
+  padding: 0 16px;
+  color: #fff;
+  background: var(--accent);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.reference-capture button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}

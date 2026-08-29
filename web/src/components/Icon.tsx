@@ -9,7 +9,8 @@ type IconName =
   | "relay"
   | "delete"
   | "edit"
-  | "lock";
+  | "lock"
+  | "more";
 const iconPaths: Record<IconName, ReactNode> = {
   inbox: (
     <>
@@ -28,6 +29,18 @@ const iconPaths: Record<IconName, ReactNode> = {
     <>
       <path d="M6 3.75h9l3 3v13.5H6z" />
       <path d="M14.5 3.75V7h3.25M9 11h6M9 14h6M9 17h4" />
+    </>
+  ),
+  modeling: (
+    <>
+      <path d="M4 17 12 4l8 13H4Z" />
+      <path d="M8 17v3h8v-3" />
+    </>
+  ),
+  question: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M9.75 9.5a2.3 2.3 0 1 1 3.65 1.85c-.9.65-1.4 1.1-1.4 2.15M12 16.75h.01" />
     </>
   ),
   projects: (
@@ -92,6 +105,9 @@ const iconPaths: Record<IconName, ReactNode> = {
       <path d="m5 16-.75 3.75L8 19l10.75-10.75a2.12 2.12 0 0 0-3-3L5 16Z" />
       <path d="m14.5 6.5 3 3" />
     </>
+  ),
+  more: (
+    <path d="M5 12h.01M12 12h.01M19 12h.01" />
   ),
   lock: (
     <>

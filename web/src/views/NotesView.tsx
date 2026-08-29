@@ -11,6 +11,7 @@ type NotesViewProps = {
   viewTitle?: string;
   viewDescription?: string;
   emptyDescription?: string;
+  showDueControls?: boolean;
   items: Item[];
   overdueItems?: Item[];
   notesCount: number | null;
@@ -73,6 +74,7 @@ export function NotesView({
   onSendToPrintQueue,
   onSetToday,
   onClearDue,
+  showDueControls = true,
 }: NotesViewProps) {
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
 
@@ -205,7 +207,8 @@ export function NotesView({
                       rows={4}
                       autoFocus
                     />
-                    <div className="note-card__due-editor">
+                    {showDueControls && (
+                      <div className="note-card__due-editor">
                       <label htmlFor={`notes-due-${item.id}`}>마감</label>
                       <input
                         id={`notes-due-${item.id}`}
@@ -219,7 +222,8 @@ export function NotesView({
                         <button type="button" onClick={() => onEditDueChange(getDateTimeInputValue(1))}>내일</button>
                         <button type="button" onClick={() => onEditDueChange("")}>마감 없음</button>
                       </div>
-                    </div>
+                      </div>
+                    )}
                     {editError && (
                       <p className="note-card__edit-error" role="alert">
                         {editError}
@@ -324,7 +328,7 @@ export function NotesView({
                       <Icon name="print-queue" size={16} />
                     </CardActionButton>
                   )}
-                  {onSetToday && (!overdueItems || overdueItemIds.has(item.id)) && (
+                  {showDueControls && onSetToday && (!overdueItems || overdueItemIds.has(item.id)) && (
                     <CardActionButton
                       className="note-card__today note-card__today-defer"
                       aria-label="오늘로 지정"
@@ -333,7 +337,7 @@ export function NotesView({
                       <Icon name="today" size={16} />
                     </CardActionButton>
                   )}
-                  {onClearDue && (
+                  {showDueControls && onClearDue && item.due_at !== null && (
                     <CardActionButton
                     className="note-card__today note-card__today-clear"
                       aria-label="기한 제거"

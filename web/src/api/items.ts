@@ -256,3 +256,21 @@ export async function restoreItem(id: string): Promise<Item> {
   const data: { item: Item } = await response.json();
   return data.item;
 }
+
+
+export type ReferenceType = "modeling" | "question";
+
+export async function createReferenceItem(body: string, referenceType: ReferenceType): Promise<void> {
+  const trimmedBody = body.trim();
+  if (!trimmedBody) throw new Error("Reference body cannot be empty");
+  const response = await authenticatedFetch(`${API_BASE_URL}/api/items`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      body: trimmedBody,
+      kind: "reference",
+      properties_json: JSON.stringify({ reference_type: referenceType }),
+    }),
+  });
+  if (!response.ok) throw new Error(`Failed to create reference: ${response.status}`);
+}

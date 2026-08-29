@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
+  moreNavigationItems,
   navigationGroups,
   type ViewId,
 } from "../config/navigation";
@@ -38,6 +39,8 @@ export function AppShell({
   onLock,
   children,
 }: AppShellProps) {
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+
   return (
     <div className="app-shell">
       <button
@@ -111,6 +114,34 @@ export function AppShell({
             </div>
           ))}
         </nav>
+
+        <div className="nav-more">
+          <button
+            type="button"
+            className={`nav-item nav-more__toggle${isMoreOpen ? " is-open" : ""}`}
+            aria-expanded={isMoreOpen}
+            onClick={() => setIsMoreOpen((open) => !open)}
+          >
+            <Icon name="more" size={18} />
+            <span>더보기</span>
+          </button>
+          {isMoreOpen && (
+            <div className="nav-more__items">
+              {moreNavigationItems.map((item) => (
+                <button
+                  type="button"
+                  className={`nav-item${activeView === item.id ? " is-active" : ""}`}
+                  onClick={() => { onNavigate(item.id); setIsMoreOpen(false); }}
+                  aria-current={activeView === item.id ? "page" : undefined}
+                  key={item.id}
+                >
+                  <Icon name={item.id} size={18} />
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="sidebar__footer">
           <span

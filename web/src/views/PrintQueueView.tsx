@@ -9,6 +9,7 @@ import type { Item, UpdateItemInput } from "../api/items";
 
 type PrintQueueViewProps = {
   items: Item[];
+  printQueueCount: number | null;
   isPending: boolean;
   isError: boolean;
   isFetching: boolean;
@@ -147,6 +148,7 @@ function focusAdjacentEditableCell(input: HTMLElement, direction: number) {
 
 export function PrintQueueView({
   items,
+  printQueueCount,
   isPending,
   isError,
   isFetching,
@@ -485,7 +487,10 @@ export function PrintQueueView({
       <div className="view-heading">
         <div>
           <p className="eyebrow">WORKSPACE</p>
-          <h1 id="print-queue-title">Print Queue</h1>
+          <div className="view-title-row">
+            <h1 id="print-queue-title">Print Queue</h1>
+            {printQueueCount !== null && <span className="count-pill">{printQueueCount}</span>}
+          </div>
           <p>출력 작업의 정보를 한눈에 관리합니다.</p>
         </div>
         <button
