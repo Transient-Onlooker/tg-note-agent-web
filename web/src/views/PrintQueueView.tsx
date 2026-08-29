@@ -39,6 +39,14 @@ const queueStatusOptions: Array<{ value: "" | QueueStatus; label: string }> = [
   { value: "paused", label: "보류" },
 ];
 
+function getQueueStatusOptions(properties: PrintJobProperties) {
+  const currentStatus = typeof properties.queue_status === "string" ? properties.queue_status : "";
+  if (currentStatus && !queueStatusOptions.some((option) => option.value === currentStatus)) {
+    return [...queueStatusOptions, { value: currentStatus as QueueStatus, label: currentStatus }];
+  }
+  return queueStatusOptions;
+}
+
 const columns: Array<{ key: EditableProperty; label: string }> = [
   { key: "customer", label: "의뢰인" },
   { key: "colors", label: "색상" },
@@ -69,7 +77,7 @@ function displayValue(
   if (key === "queue_status") {
     return queueStatusOptions.find(
       (option) => option.value === properties.queue_status,
-    )?.label ?? "미상";
+    )?.label ?? properties.queue_status ?? "\uBBF8\uC0C1";
   }
 
   const value = properties[key];
@@ -86,11 +94,7 @@ function editValue(
   item: Item,
 ) {
   if (key === "queue_status") {
-    return queueStatusOptions.some(
-      (option) => option.value === properties.queue_status,
-    )
-      ? properties.queue_status ?? ""
-      : "";
+    return properties.queue_status ?? "";
   }
 
   return displayValue(properties, key, item);
@@ -106,11 +110,22 @@ function propertyValue(key: EditableProperty, value: string): unknown {
   }
 
   if (key === "queue_status") {
-    const option = queueStatusOptions.find((candidate) => candidate.value === value);
-    return option?.value || undefined;
+    return value || undefined;
   }
 
   return value;
+}
+
+function displayDueDate(dueAt: string | null) {
+  if (!dueAt) return "\u2014";
+  const date = new Date(dueAt);
+  return Number.isNaN(date.getTime()) ? dueAt : String(date.getMonth() + 1) + "/" + String(date.getDate());
+}
+
+function editDueDate(dueAt: string | null) {
+  if (!dueAt) return "";
+  const date = new Date(dueAt);
+  return Number.isNaN(date.getTime()) ? "" : date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
 }
 
 function focusAdjacentEditableCell(input: HTMLElement, direction: number) {
@@ -265,6 +280,19 @@ export function PrintQueueView({
     }
   };
 
+  const saveDueDate = async (item: Item, afterSave?: () => void) => {
+    const cellKey = item.id + ":due_at";
+    if (savingCellRef.current) return;
+    const originalValue = editDueDate(item.due_at);
+    const nextValue = draft;
+    if (nextValue === originalValue) { cancelEditing(); afterSave?.(); return; }
+    savingCellRef.current = cellKey;
+    setSavingCell(cellKey);
+    try { await onUpdateItem(item.id, { due_at: nextValue || null }); cancelEditing(); afterSave?.(); }
+    catch { restoreAfterFailure(originalValue); }
+    finally { savingCellRef.current = null; setSavingCell(null); }
+  };
+
   const runRowAction = async (
     item: Item,
     action: "inbox" | "archive",
@@ -416,7 +444,7 @@ export function PrintQueueView({
 
   const handleInputBlur = (
     item: Item,
-    key: EditableProperty | "output",
+    key: EditableProperty | "output" | "due_at",
     event: FocusEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
     if (skipNextBlurRef.current) {
@@ -432,6 +460,7 @@ export function PrintQueueView({
     }
 
     if (key === "output") void saveOutput(item);
+    else if (key === "due_at") void saveDueDate(item);
     else void saveProperty(item, key);
   };
 
@@ -484,6 +513,7 @@ export function PrintQueueView({
               <tr>
                 <th scope="col">순서</th>
                 <th scope="col">출력물</th>
+                <th scope="col">&#xCD9C;&#xB825; &#xC608;&#xC815;</th>
                 {columns.map((column) => (
                   <th scope="col" key={column.key}>{column.label}</th>
                 ))}
@@ -581,8 +611,20 @@ export function PrintQueueView({
                         </button>
                       )}
                     </td>
-
-                    {columns.map((column) => {
+                <td>
+                  {editingCell === item.id + ":due_at" ? (
+                    <div className="print-queue-edit-cell">
+                      <input type="date" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={(event) => handleInputBlur(item, "due_at", event)} autoFocus disabled={savingCell === item.id + ":due_at"} />
+                      <button data-edit-action="save" type="button" onClick={() => void saveDueDate(item)} disabled={savingCell === item.id + ":due_at"}>저장</button>
+                      <button data-edit-action="cancel" type="button" onClick={cancelEditing} disabled={savingCell === item.id + ":due_at"}>취소</button>
+                    </div>
+                  ) : (
+                    <button className="print-queue-cell-button" type="button" onClick={() => startEditing(item.id + ":due_at", editDueDate(item.due_at))}>
+                      {displayDueDate(item.due_at)}
+                    </button>
+                  )}
+                </td>
+                {columns.map((column) => {
                       const value = displayValue(properties, column.key, item);
                       const editableValue = editValue(properties, column.key, item);
                       const cellKey = `${item.id}:${column.key}`;
@@ -621,7 +663,7 @@ export function PrintQueueView({
                                   autoFocus
                                   disabled={cellSaving}
                                 >
-                                  {queueStatusOptions.map((option) => (
+                                  {getQueueStatusOptions(properties).map((option) => (
                                     <option
                                       key={option.value || "unknown"}
                                       value={option.value}
