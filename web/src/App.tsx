@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
 } from "react";
 import {
@@ -55,6 +56,16 @@ type AuthStatus = "checking" | "locked" | "authenticated";
 type ActionFeedback = { message: string; tone: "success" | "error" };
 type UpdateItemContext = {
   snapshots: Array<[readonly unknown[], Item[] | undefined]>;
+};
+type EditDraftSnapshot = {
+  body: string;
+  dueAt: string;
+};
+type UpdateItemVariables = {
+  id: string;
+  input: UpdateItemInput;
+  draft?: EditDraftSnapshot;
+  editorSession?: number;
 };
 
 
@@ -158,6 +169,9 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
   const [localDateKey, setLocalDateKey] = useState(() => getLocalDateKey());
   const queryClient = useQueryClient();
+  const editingItemIdRef = useRef<string | null>(null);
+  const failedEditDraftsRef = useRef(new Map<string, EditDraftSnapshot>());
+  const editorSessionRef = useRef(0);
   useRealtimeSync(queryClient);
 
   const showActionFeedback = (message: string, tone: ActionFeedback["tone"] = "success") => {
@@ -281,7 +295,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   });
 
   const updateItemMutation = useMutation({
-    mutationFn: ({ id, input }: { id: string; input: UpdateItemInput }) =>
+    mutationFn: ({ id, input }: UpdateItemVariables) =>
       updateItemFields(id, input),
     onMutate: async ({ id, input }) => {
       await queryClient.cancelQueries({ queryKey: itemQueryKeys.all });
@@ -307,7 +321,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
 
       return { snapshots } satisfies UpdateItemContext;
     },
-    onSuccess: async (updatedItem: Item) => {
+    onSuccess: async (updatedItem: Item, variables: UpdateItemVariables) => {
       queryClient.setQueriesData<Item[]>(
         { queryKey: itemQueryKeys.all },
         (items) =>
@@ -316,17 +330,39 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
           ),
       );
       await invalidateItemData();
-      setEditingItemId(null);
-      setEditDraft("");
-      setEditDueAt("");
-      setEditError(null);
+      failedEditDraftsRef.current.delete(updatedItem.id);
+      if (variables.editorSession !== undefined &&
+        editingItemIdRef.current === updatedItem.id &&
+        editorSessionRef.current === variables.editorSession) {
+        editingItemIdRef.current = null;
+        setEditingItemId(null);
+        setEditDraft("");
+        setEditDueAt("");
+        setEditError(null);
+      }
       showActionFeedback("수정했습니다.");
     },
-    onError: (_error, _variables, context) => {
+    onError: (_error, variables, context) => {
       context?.snapshots.forEach(([queryKey, items]) => {
         queryClient.setQueryData(queryKey, items);
       });
-      setEditError("수정하지 못했습니다.");
+
+      if (variables.draft) {
+        failedEditDraftsRef.current.set(variables.id, variables.draft);
+        const currentEditingId = editingItemIdRef.current;
+        const ownsEditor = variables.editorSession !== undefined &&
+          (currentEditingId === null ||
+            (currentEditingId === variables.id &&
+              editorSessionRef.current === variables.editorSession));
+        if (ownsEditor) {
+          editingItemIdRef.current = variables.id;
+          editorSessionRef.current += 1;
+          setEditingItemId(variables.id);
+          setEditDraft(variables.draft.body);
+          setEditDueAt(variables.draft.dueAt);
+          setEditError("수정하지 못했습니다.");
+        }
+      }
       showActionFeedback("수정하지 못했습니다.", "error");
     },
   });
@@ -605,14 +641,20 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
 
   const startEditing = (item: Item) => {
     updateItemMutation.reset();
+    const failedDraft = failedEditDraftsRef.current.get(item.id);
+    failedEditDraftsRef.current.delete(item.id);
+    editingItemIdRef.current = item.id;
+    editorSessionRef.current += 1;
     setEditingItemId(item.id);
-    setEditDraft(item.body);
-    setEditDueAt(toDateTimeInputValue(item.due_at));
+    setEditDraft(failedDraft?.body ?? item.body);
+    setEditDueAt(failedDraft?.dueAt ?? toDateTimeInputValue(item.due_at));
     setEditError(null);
   };
 
   const cancelEditing = () => {
     updateItemMutation.reset();
+    editorSessionRef.current += 1;
+    editingItemIdRef.current = null;
     setEditingItemId(null);
     setEditDraft("");
     setEditDueAt("");
@@ -627,17 +669,24 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     }
 
     const itemId = editingItemId;
+    const editorSession = editorSessionRef.current;
+    const draftSnapshot: EditDraftSnapshot = {
+      body: editDraft,
+      dueAt: editDueAt,
+    };
     const input: UpdateItemInput = {
       body: trimmedBody,
       due_at: fromDateTimeInputValue(editDueAt),
     };
 
+    editorSessionRef.current += 1;
+    editingItemIdRef.current = null;
     setEditingItemId(null);
     setEditDraft("");
     setEditDueAt("");
     setEditError(null);
 
-    updateItemMutation.mutate({ id: itemId, input });
+    updateItemMutation.mutate({ id: itemId, input, draft: draftSnapshot, editorSession });
   };
 
   const openDeleteConfirmation = (item: Item) => {

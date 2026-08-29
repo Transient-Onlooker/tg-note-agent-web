@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { Item } from "../api/items";
 import { CardActionButton } from "../components/CardActionButton";
 import { Icon } from "../components/Icon";
@@ -54,8 +54,21 @@ export function ArchiveView({
 }: ArchiveViewProps) {
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
 
+  const isCoarsePointer = (event: ReactPointerEvent<HTMLElement>) => event.pointerType === "touch" || event.pointerType === "pen" || window.matchMedia("(hover: none), (pointer: coarse)").matches;
+
+  const handleActionPointerDown = (event: ReactPointerEvent<HTMLElement>, itemId: string) => {
+    if (!isCoarsePointer(event) || openActionMenuId === itemId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setOpenActionMenuId(itemId);
+  };
+
+  const handleViewPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    if (isCoarsePointer(event) && (!(event.target instanceof Element) || !event.target.closest(".note-card__actions"))) setOpenActionMenuId(null);
+  };
+
   return (
-    <section className="archive-view" aria-labelledby="archive-title">
+    <section onPointerDown={handleViewPointerDown} className="archive-view" aria-labelledby="archive-title">
       <header className="view-header">
         <div>
           <p className="eyebrow">Library</p>
@@ -208,7 +221,8 @@ export function ArchiveView({
                   </>
                 )}
               </div>
-              <div className={`note-card__actions${openActionMenuId === item.id ? " is-open" : ""}`}>
+              <div className={`note-card__actions${openActionMenuId === item.id ? " is-open" : ""}`}
+                onPointerDown={(event) => handleActionPointerDown(event, item.id)}>
                 <button
                   className="note-card__menu-toggle"
                   type="button"

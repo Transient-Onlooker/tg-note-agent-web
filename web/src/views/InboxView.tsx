@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { Item } from "../api/items";
 import { CardActionButton } from "../components/CardActionButton";
 import { Icon } from "../components/Icon";
@@ -81,13 +81,26 @@ export function InboxView({
 }: InboxViewProps) {
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
 
+  const isCoarsePointer = (event: ReactPointerEvent<HTMLElement>) => event.pointerType === "touch" || event.pointerType === "pen" || window.matchMedia("(hover: none), (pointer: coarse)").matches;
+
+  const handleActionPointerDown = (event: ReactPointerEvent<HTMLElement>, itemId: string) => {
+    if (!isCoarsePointer(event) || openActionMenuId === itemId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setOpenActionMenuId(itemId);
+  };
+
+  const handleViewPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    if (isCoarsePointer(event) && (!(event.target instanceof Element) || !event.target.closest(".note-card__actions"))) setOpenActionMenuId(null);
+  };
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onCreate();
   };
 
   return (
-    <section className="inbox-view" aria-labelledby="inbox-title">
+    <section onPointerDown={handleViewPointerDown} className="inbox-view" aria-labelledby="inbox-title">
       <header className="view-header">
         <div>
           <p className="eyebrow">Workspace</p>
@@ -300,7 +313,8 @@ export function InboxView({
                 )}
               </div>
 
-              <div className={`note-card__actions${openActionMenuId === item.id ? " is-open" : ""}`}>
+              <div className={`note-card__actions${openActionMenuId === item.id ? " is-open" : ""}`}
+                onPointerDown={(event) => handleActionPointerDown(event, item.id)}>
                 <button
                   className="note-card__menu-toggle"
                   type="button"

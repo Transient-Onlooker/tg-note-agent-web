@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { Item } from "../api/items";
 import { CardActionButton } from "../components/CardActionButton";
 import { Icon } from "../components/Icon";
@@ -75,12 +75,25 @@ export function NotesView({
   onClearDue,
 }: NotesViewProps) {
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+
+  const isCoarsePointer = (event: ReactPointerEvent<HTMLElement>) => event.pointerType === "touch" || event.pointerType === "pen" || window.matchMedia("(hover: none), (pointer: coarse)").matches;
+
+  const handleActionPointerDown = (event: ReactPointerEvent<HTMLElement>, itemId: string) => {
+    if (!isCoarsePointer(event) || openActionMenuId === itemId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setOpenActionMenuId(itemId);
+  };
+
+  const handleViewPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    if (isCoarsePointer(event) && (!(event.target instanceof Element) || !event.target.closest(".note-card__actions"))) setOpenActionMenuId(null);
+  };
   const overdueItemIds = new Set(overdueItems?.map((item) => item.id));
   const displayItems = overdueItems ? [...overdueItems, ...items] : items;
   const overdueCount = overdueItems?.length ?? 0;
 
   return (
-    <section className="notes-view" aria-labelledby="notes-title">
+    <section onPointerDown={handleViewPointerDown} className="notes-view" aria-labelledby="notes-title">
       <header className="view-header">
         <div>
           <p className="eyebrow">Workspace</p>
@@ -245,7 +258,8 @@ export function NotesView({
                 )}
               </div>
 
-              <div className={`note-card__actions${openActionMenuId === item.id ? " is-open" : ""}`}>
+              <div className={`note-card__actions${openActionMenuId === item.id ? " is-open" : ""}`}
+                onPointerDown={(event) => handleActionPointerDown(event, item.id)}>
                 <button
                   className="note-card__menu-toggle"
                   type="button"

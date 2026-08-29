@@ -1980,3 +1980,10 @@
     padding-left: 4px;
   }
 }
+
+
+@media (hover: none) and (pointer: coarse) and (min-width: 561px) {
+  .note-card__actions { position: absolute; top: 0; right: 0; z-index: 5; display: flex; align-items: center; justify-content: flex-end; gap: 4px; width: 320px; height: 58px; pointer-events: auto; }
+  .note-card__actions:not(.is-open) .note-card__action { pointer-events: none; }
+  .note-card__actions.is-open .note-card__action { opacity: 1; pointer-events: auto; }
+}
