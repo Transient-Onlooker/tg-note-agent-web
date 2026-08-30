@@ -305,13 +305,6 @@ export function InboxView({
 
                     <div className="note-card__meta">
                       <span className="kind-badge">{item.kind}</span>
-                      <span
-                        className="meta-separator"
-                        aria-hidden="true"
-                      />
-                      <time dateTime={item.created_at}>
-                        {formatCreatedAt(item.created_at)}
-                      </time>
                       {item.due_at !== null && (
                         <>
                           <span className="meta-separator" aria-hidden="true" />

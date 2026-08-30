@@ -1246,6 +1246,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
           />
         ) : activeView === "purchase" ? (
           <PurchaseView
+            showCreatedAt={false}
             items={purchaseQuery.data ?? []}
             notesCount={purchaseQuery.isSuccess ? purchaseQuery.data.length : null}
             isPending={purchaseQuery.isPending}
