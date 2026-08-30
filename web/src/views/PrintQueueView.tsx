@@ -1,7 +1,10 @@
 import {
+  useLayoutEffect,
   useRef,
   useState,
+  type ComponentPropsWithoutRef,
   type FocusEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { PrintJobProperties } from "@note-relay/shared";
@@ -137,13 +140,51 @@ function focusAdjacentEditableCell(input: HTMLElement, direction: number) {
     document.querySelectorAll<HTMLTableCellElement>(
       ".print-queue-table tbody td",
     ),
-  ).filter((cell) => cell.querySelector(".print-queue-cell-button, input, select"));
+  ).filter((cell) => cell.querySelector(".print-queue-cell-button, input, select, textarea"));
   const currentIndex = cells.indexOf(currentCell);
   const nextButton = cells[currentIndex + direction]?.querySelector<HTMLElement>(
     ".print-queue-cell-button",
   );
 
   if (nextButton) window.setTimeout(() => nextButton.focus(), 0);
+}
+
+
+const textareaMaxHeight = 176;
+
+function AutoGrowTextarea({
+  onChange,
+  value,
+  ...props
+}: ComponentPropsWithoutRef<"textarea">) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const resize = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "0px";
+    const nextHeight = Math.min(textarea.scrollHeight, textareaMaxHeight);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > textareaMaxHeight ? "auto" : "hidden";
+  };
+
+  useLayoutEffect(() => {
+    resize();
+  }, [value]);
+
+  return (
+    <textarea
+      {...props}
+      ref={textareaRef}
+      value={value}
+      onChange={(event) => {
+        onChange?.(event);
+        window.requestAnimationFrame(resize);
+      }}
+    />
+  );
 }
 
 export function PrintQueueView({
@@ -403,22 +444,25 @@ export function PrintQueueView({
     }
 
     event.preventDefault();
-    const target = document
-      .elementFromPoint(event.clientX, event.clientY)
-      ?.closest<HTMLElement>(".print-queue-order-handle");
-    const targetIndex = Number(target?.dataset.queueIndex);
-    if (!Number.isInteger(targetIndex)) return;
-
-    const targetBounds = target?.getBoundingClientRect();
-    const nextDropIndex = targetIndex + (
-      targetBounds && event.clientY > targetBounds.top + targetBounds.height / 2
-        ? 1
-        : 0
+    const rows = Array.from(
+      document.querySelectorAll<HTMLTableRowElement>(
+        ".print-queue-table tbody tr",
+      ),
     );
 
-    if (dropIndexRef.current !== nextDropIndex) {
-      dropIndexRef.current = nextDropIndex;
-      setDropIndex(nextDropIndex);
+    if (rows.length === 0) return;
+
+    const nextDropIndex = rows.findIndex((row) => {
+      const bounds = row.getBoundingClientRect();
+      return event.clientY < bounds.top + bounds.height / 2;
+    });
+
+    const resolvedDropIndex =
+      nextDropIndex === -1 ? rows.length : nextDropIndex;
+
+    if (dropIndexRef.current !== resolvedDropIndex) {
+      dropIndexRef.current = resolvedDropIndex;
+      setDropIndex(resolvedDropIndex);
     }
   };
 
@@ -441,13 +485,18 @@ export function PrintQueueView({
   const handleOrderPointerCancel = (
     event: ReactPointerEvent<HTMLTableCellElement>,
   ) => {
-    if (dragStateRef.current?.pointerId === event.pointerId) resetDrag();
+    if (dragStateRef.current?.pointerId !== event.pointerId) return;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    resetDrag();
   };
 
   const handleInputBlur = (
     item: Item,
     key: EditableProperty | "output" | "due_at",
-    event: FocusEvent<HTMLInputElement | HTMLSelectElement>,
+    event: FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => {
     if (skipNextBlurRef.current) {
       skipNextBlurRef.current = false;
@@ -464,6 +513,30 @@ export function PrintQueueView({
     if (key === "output") void saveOutput(item);
     else if (key === "due_at") void saveDueDate(item);
     else void saveProperty(item, key);
+  };
+
+
+  const handleTextareaKeyDown = (
+    event: ReactKeyboardEvent<HTMLTextAreaElement>,
+    save: (afterSave?: () => void) => void,
+  ) => {
+    const input = event.currentTarget;
+
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      save();
+    }
+    if (event.key === "Tab") {
+      event.preventDefault();
+      save(() =>
+        focusAdjacentEditableCell(input, event.shiftKey ? -1 : 1),
+      );
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      skipNextBlurRef.current = true;
+      cancelEditing();
+    }
   };
 
   if (isPending) {
@@ -565,31 +638,16 @@ export function PrintQueueView({
                     <td>
                       {editingCell === outputKey ? (
                         <div className="print-queue-edit-cell">
-                          <input
+                          <AutoGrowTextarea
                             value={draft}
                             onChange={(event) => setDraft(event.target.value)}
                             onBlur={(event) => handleInputBlur(item, "output", event)}
-                            onKeyDown={(event) => {
-                              const input = event.currentTarget;
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                void saveOutput(item);
-                              }
-                              if (event.key === "Tab") {
-                                event.preventDefault();
-                                void saveOutput(item, () =>
-                                  focusAdjacentEditableCell(
-                                    input,
-                                    event.shiftKey ? -1 : 1,
-                                  ),
-                                );
-                              }
-                              if (event.key === "Escape") {
-                                event.preventDefault();
-                                skipNextBlurRef.current = true;
-                                cancelEditing();
-                              }
-                            }}
+                            onKeyDown={(event) =>
+                              handleTextareaKeyDown(event, (afterSave) =>
+                                void saveOutput(item, afterSave),
+                              )
+                            }
+                            rows={1}
                             autoFocus
                             disabled={outputSaving}
                           />
@@ -677,6 +735,20 @@ export function PrintQueueView({
                                     </option>
                                   ))}
                                 </select>
+                              ) : column.key === "note" ? (
+                                <AutoGrowTextarea
+                                  value={draft}
+                                  onChange={(event) => setDraft(event.target.value)}
+                                  onBlur={(event) => handleInputBlur(item, column.key, event)}
+                                  onKeyDown={(event) =>
+                                    handleTextareaKeyDown(event, (afterSave) =>
+                                      void saveProperty(item, column.key, afterSave),
+                                    )
+                                  }
+                                  rows={1}
+                                  autoFocus
+                                  disabled={cellSaving}
+                                />
                               ) : (
                                 <input
                                   value={draft}

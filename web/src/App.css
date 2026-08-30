@@ -2160,3 +2160,37 @@
     display: grid;
   }
 }
+
+
+.print-queue-edit-cell {
+  align-items: flex-start;
+}
+
+.print-queue-edit-cell textarea {
+  width: min(280px, 36vw);
+  min-height: 28px;
+  max-height: 176px;
+  padding: 4px 6px;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  resize: none;
+  overflow-y: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  touch-action: pan-y;
+}
+
+.print-queue-edit-cell textarea:focus {
+  border-color: rgba(49, 91, 216, 0.52);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(49, 91, 216, 0.08);
+}
+
+@media (max-width: 560px) {
+  .print-queue-edit-cell textarea {
+    width: min(260px, 58vw);
+  }
+}
