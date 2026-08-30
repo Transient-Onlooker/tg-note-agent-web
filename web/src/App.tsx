@@ -41,12 +41,21 @@ import { LockedScreen } from "./components/LockedScreen";
 import { AppShell } from "./components/AppShell";
 import { DeleteConfirmModal } from "./components/DeleteConfirmModal";
 import { PlaceholderView } from "./views/PlaceholderView";
+import { ProjectsView } from "./views/ProjectsView";
 import { TrashView } from "./views/TrashView";
 import { InboxView } from "./views/InboxView";
 import { NotesView } from "./views/NotesView";
 import { ArchiveView } from "./views/ArchiveView";
 import { PurchaseView } from "./views/PurchaseView";
 import { PrintQueueView } from "./views/PrintQueueView";
+import {
+  createProject,
+  deleteProject,
+  listProjects,
+  projectQueryKeys,
+  updateProject,
+  type Project,
+} from "./api/projects";
 import { TodayView } from "./views/TodayView";
 import { ReferenceView } from "./views/ReferenceView";
 import {
@@ -242,6 +251,7 @@ function App() {
 function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const [draft, setDraft] = useState("");
   const [activeView, setActiveView] = useState<ViewId>("inbox");
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -377,6 +387,29 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     enabled: activeView === "modeling" || activeView === "question",
   });
 
+  const projectsQuery = useQuery({
+    queryKey: projectQueryKeys.list(),
+    queryFn: listProjects,
+    enabled: activeView === "projects",
+  });
+
+  const resolvedProjectId = projectsQuery.data?.some((project) => project.id === selectedProjectId)
+    ? selectedProjectId
+    : projectsQuery.data?.[0]?.id ?? null;
+  const projectItemsFilters = resolvedProjectId
+    ? { status: "active" as const, projectId: resolvedProjectId }
+    : null;
+  const projectItemsQuery = useQuery({
+    queryKey: itemQueryKeys.list(projectItemsFilters ?? { status: "active" as const }),
+    queryFn: () => listItems(projectItemsFilters ?? { status: "active" }),
+    enabled: activeView === "projects" && projectItemsFilters !== null,
+  });
+  const projectAssignableItemsQuery = useQuery({
+    queryKey: itemQueryKeys.list({ status: "active" as const }),
+    queryFn: () => listItems({ status: "active" }),
+    enabled: activeView === "projects",
+  });
+
   const trashQuery = useQuery({
     queryKey: ["trash"],
     queryFn: listTrash,
@@ -460,6 +493,42 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       await invalidateItemData();
     },
     onError: () => showActionFeedback("저장하지 못했습니다.", "error"),
+  });
+
+  const invalidateProjectData = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: projectQueryKeys.all }),
+      invalidateItemData(),
+    ]);
+  };
+
+  const createProjectMutation = useMutation({
+    mutationFn: (name: string) => createProject({ name }),
+    onSuccess: async (project) => {
+      setSelectedProjectId(project.id);
+      await queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+      showActionFeedback("Project created.");
+    },
+    onError: () => showActionFeedback("Project could not be created.", "error"),
+  });
+
+  const updateProjectMutation = useMutation({
+    mutationFn: ({ project, name }: { project: Project; name: string }) => updateProject(project.id, { name }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+      showActionFeedback("Project updated.");
+    },
+    onError: () => showActionFeedback("Project could not be updated.", "error"),
+  });
+
+  const deleteProjectMutation = useMutation({
+    mutationFn: (project: Project) => deleteProject(project.id),
+    onSuccess: async (_result, project) => {
+      if (selectedProjectId === project.id) setSelectedProjectId(null);
+      await invalidateProjectData();
+      showActionFeedback("Project deleted. Connected items were kept.");
+    },
+    onError: () => showActionFeedback("Project could not be deleted.", "error"),
   });
 
   const updateItemMutation = useMutation({
@@ -1041,6 +1110,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       case "todo": return todoCount;
       case "today": return todayCount;
       case "notes": return notesCount;
+      case "projects": return projectsQuery.isSuccess ? projectsQuery.data.length : null;
       case "print-queue": return printQueueQuery.isSuccess ? printQueueQuery.data.length : null;
       case "purchase": return purchaseQuery.isSuccess ? purchaseQuery.data.length : null;
       case "archive": return archiveCount;
@@ -1255,6 +1325,30 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onCreate={createReference}
             isCreating={createReferenceMutation.isPending}
             createError={createReferenceMutation.isError}
+          />
+        ) : activeView === "projects" ? (
+          <ProjectsView
+            projects={projectsQuery.data ?? []}
+            selectedProjectId={resolvedProjectId}
+            projectItems={projectItemsQuery.data ?? []}
+            assignableItems={projectAssignableItemsQuery.data ?? []}
+            isPending={projectsQuery.isPending}
+            isError={projectsQuery.isError}
+            isProjectItemsPending={projectItemsQuery.isPending}
+            isProjectItemsError={projectItemsQuery.isError}
+            isCreating={createProjectMutation.isPending}
+            isUpdating={updateProjectMutation.isPending}
+            isDeleting={deleteProjectMutation.isPending}
+            onSelectProject={setSelectedProjectId}
+            onCreateProject={(name) => createProjectMutation.mutateAsync(name)}
+            onRenameProject={(project, name) => updateProjectMutation.mutateAsync({ project, name })}
+            onDeleteProject={(project) => deleteProjectMutation.mutateAsync(project)}
+            onAssignItem={(item, projectId) => updateItemMutation.mutateAsync({ id: item.id, input: { project_id: projectId } })}
+            onRetry={() => {
+              void projectsQuery.refetch();
+              void projectItemsQuery.refetch();
+              void projectAssignableItemsQuery.refetch();
+            }}
           />
         ) : activeView === "purchase" ? (
           <PurchaseView

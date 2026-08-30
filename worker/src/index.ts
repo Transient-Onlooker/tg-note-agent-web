@@ -74,6 +74,18 @@ function normalizePropertiesJson(value: unknown): string | undefined {
   }
 }
 
+
+
+type CreateProjectRequest = {
+  name?: unknown;
+  description?: unknown;
+};
+
+type UpdateProjectRequest = {
+  name?: unknown;
+  description?: unknown;
+};
+
 type UpdateItemRequest = {
   body?: unknown;
   kind?: unknown;
@@ -188,6 +200,203 @@ app.get("/api/counts", async (c) => {
       trash: Number(result?.trash ?? 0),
     },
   });
+});
+
+
+
+app.get("/api/projects", async (c) => {
+  const { results } = await c.env.DB
+    .prepare(`
+      SELECT
+        id,
+        name,
+        description,
+        status,
+        created_at,
+        updated_at,
+        archived_at
+      FROM projects
+      ORDER BY
+        CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+        updated_at DESC,
+        id ASC
+    `)
+    .all();
+
+  return c.json({ projects: results });
+});
+
+app.post("/api/projects", async (c) => {
+  let payload: CreateProjectRequest;
+
+  try {
+    payload = await c.req.json<CreateProjectRequest>();
+  } catch {
+    return c.json({ error: "invalid_body" }, 400);
+  }
+
+  const name = typeof payload?.name === "string" ? payload.name.trim() : "";
+  const description = payload?.description;
+
+  if (!name) {
+    return c.json({ error: "invalid_name" }, 400);
+  }
+
+  if (
+    description !== undefined &&
+    description !== null &&
+    typeof description !== "string"
+  ) {
+    return c.json({ error: "invalid_description" }, 400);
+  }
+
+  const now = new Date().toISOString();
+  const project = {
+    id: crypto.randomUUID(),
+    name,
+    description:
+      typeof description === "string" && description.trim()
+        ? description.trim()
+        : null,
+    status: "active",
+    created_at: now,
+    updated_at: now,
+    archived_at: null,
+  };
+
+  await c.env.DB
+    .prepare(`
+      INSERT INTO projects (
+        id,
+        name,
+        description,
+        status,
+        created_at,
+        updated_at,
+        archived_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `)
+    .bind(
+      project.id,
+      project.name,
+      project.description,
+      project.status,
+      project.created_at,
+      project.updated_at,
+      project.archived_at,
+    )
+    .run();
+
+  return c.json({ project }, 201);
+});
+
+app.patch("/api/projects/:id", async (c) => {
+  let payload: UpdateProjectRequest;
+
+  try {
+    payload = await c.req.json<UpdateProjectRequest>();
+  } catch {
+    return c.json({ error: "invalid_body" }, 400);
+  }
+
+  const assignments: string[] = [];
+  const bindings: (string | null)[] = [];
+  const hasName = Object.prototype.hasOwnProperty.call(payload, "name");
+  const hasDescription = Object.prototype.hasOwnProperty.call(
+    payload,
+    "description",
+  );
+
+  if (hasName) {
+    const name = typeof payload.name === "string" ? payload.name.trim() : "";
+
+    if (!name) {
+      return c.json({ error: "invalid_name" }, 400);
+    }
+
+    assignments.push("name = ?");
+    bindings.push(name);
+  }
+
+  if (hasDescription) {
+    if (
+      payload.description !== null &&
+      typeof payload.description !== "string"
+    ) {
+      return c.json({ error: "invalid_description" }, 400);
+    }
+
+    assignments.push("description = ?");
+    bindings.push(
+      typeof payload.description === "string" && payload.description.trim()
+        ? payload.description.trim()
+        : null,
+    );
+  }
+
+  if (assignments.length === 0) {
+    return c.json({ error: "no_changes" }, 400);
+  }
+
+  const now = new Date().toISOString();
+  const projectId = c.req.param("id");
+  const result = await c.env.DB
+    .prepare(`
+      UPDATE projects
+      SET
+        ${assignments.join(",\n        ")},
+        updated_at = ?
+      WHERE id = ?
+    `)
+    .bind(...bindings, now, projectId)
+    .run();
+
+  if (result.meta.changes !== 1) {
+    return c.json({ error: "not_found" }, 404);
+  }
+
+  const project = await c.env.DB
+    .prepare(`
+      SELECT
+        id,
+        name,
+        description,
+        status,
+        created_at,
+        updated_at,
+        archived_at
+      FROM projects
+      WHERE id = ?
+      LIMIT 1
+    `)
+    .bind(projectId)
+    .first();
+
+  return c.json({ project });
+});
+
+app.delete("/api/projects/:id", async (c) => {
+  const projectId = c.req.param("id");
+  const now = new Date().toISOString();
+  const results = await c.env.DB.batch([
+    c.env.DB
+      .prepare(`
+        UPDATE items
+        SET
+          project_id = NULL,
+          updated_at = ?,
+          version = version + 1
+        WHERE project_id = ?
+      `)
+      .bind(now, projectId),
+    c.env.DB.prepare("DELETE FROM projects WHERE id = ?").bind(projectId),
+  ]);
+
+  if (results[1].meta.changes !== 1) {
+    return c.json({ error: "not_found" }, 404);
+  }
+
+  return c.json({ ok: true });
 });
 
 app.get("/api/items", async (c) => {
