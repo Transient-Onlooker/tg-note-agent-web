@@ -1089,6 +1089,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     onMoveToQuestion: activeView === "modeling"
       ? (item: Item) => classifyItem(item, "reference", "question")
       : undefined,
+    onSetToday: setItemDueToday,
     onDeleteRequest: openDeleteConfirmation,
     projects: projectOptions,
     onProjectChange: changeItemProject,

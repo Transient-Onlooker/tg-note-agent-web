@@ -202,6 +202,7 @@ export function PrintQueueView({
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [dragOffsetY, setDragOffsetY] = useState(0);
+  const [dragRowHeight, setDragRowHeight] = useState(0);
   const [isReordering, setIsReordering] = useState(false);
   const savingCellRef = useRef<string | null>(null);
   const skipNextBlurRef = useRef(false);
@@ -400,6 +401,7 @@ export function PrintQueueView({
     setDraggedItemId(null);
     setDropIndex(null);
     setDragOffsetY(0);
+    setDragRowHeight(0);
   };
 
   const handleOrderPointerDown = (
@@ -421,6 +423,7 @@ export function PrintQueueView({
     setDraggedItemId(item.id);
     setDropIndex(index);
     setDragOffsetY(0);
+    setDragRowHeight(event.currentTarget.parentElement?.getBoundingClientRect().height ?? 0);
   };
 
   const handleOrderPointerMove = (
@@ -614,9 +617,27 @@ export function PrintQueueView({
                 ]
                   .filter(Boolean)
                   .join(" ");
+                const rowTranslateY =
+                  draggedItemId === item.id
+                    ? dragOffsetY
+                    : dragRowHeight > 0 &&
+                        dropIndex !== null &&
+                        draggedIndex >= 0 &&
+                        dropIndex > draggedIndex + 1 &&
+                        index > draggedIndex &&
+                        index < dropIndex
+                      ? -dragRowHeight
+                      : dragRowHeight > 0 &&
+                          dropIndex !== null &&
+                          draggedIndex >= 0 &&
+                          dropIndex < draggedIndex &&
+                          index >= dropIndex &&
+                          index < draggedIndex
+                        ? dragRowHeight
+                        : 0;
 
                 return (
-                  <tr className={rowClassName || undefined} key={item.id} style={draggedItemId === item.id ? { transform: `translateY(${dragOffsetY}px)` } : undefined}>
+                  <tr className={rowClassName || undefined} key={item.id} style={rowTranslateY !== 0 ? { transform: "translateY(" + rowTranslateY + "px)" } : undefined}>
                     <td
                       aria-label={`${index + 1}번 작업 순서 변경`}
                       className="print-queue-order-handle"

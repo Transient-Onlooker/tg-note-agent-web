@@ -7,7 +7,7 @@ import { getItemKindLabel, getReferenceType } from "../utils/item";
 
 type NotesViewProps = {
   viewTitle?: string; viewDescription?: string; emptyTitle?: string; errorTitle?: string; emptyDescription?: string;
-  showDueControls?: boolean; showCreatedAt?: boolean; items: Item[]; overdueItems?: Item[]; notesCount: number | null;
+  showDueControls?: boolean; showTodayAction?: boolean; showCreatedAt?: boolean; items: Item[]; overdueItems?: Item[]; notesCount: number | null;
   isPending: boolean; isError: boolean; isSuccess: boolean; isFetching: boolean; editingItemId: string | null;
   editDraft: string; editDueAt: string; editError: string | null; isUpdating: boolean; deleteError: boolean;
   onRetry: () => void; onStartEditing: (item: Item) => void; onEditDraftChange: (value: string) => void;
@@ -29,7 +29,7 @@ export function NotesView({
   onRetry, onStartEditing, onEditDraftChange, onEditDueChange, onCancelEditing, onSaveEditing, onMoveToNotes,
   onMoveToTodo, onMoveToInbox, onArchive, onPurchase, onDeleteRequest, onSendToPrintQueue, onMoveToModeling,
   onMoveToQuestion, onSetToday, onClearDue, projects = [], onProjectChange, renderItemDetails, renderEditorDetails,
-  renderBeforeList, showDueControls = true, showCreatedAt = false,
+  renderBeforeList, showDueControls = true, showTodayAction = true, showCreatedAt = false,
 }: NotesViewProps) {
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
   useEffect(() => setOpenActionMenuId(null), [editingItemId]);
@@ -40,7 +40,7 @@ export function NotesView({
   const getActions = (item: Item): CardAction[] => {
     const actions: CardAction[] = [];
     const referenceType = getReferenceType(item);
-    const canSetToday = Boolean(showDueControls && onSetToday && (!overdueItems || overdueItemIds.has(item.id)));
+    const canSetToday = Boolean(showTodayAction && onSetToday && (!overdueItems || overdueItemIds.has(item.id)));
     if (onMoveToInbox && item.kind !== "inbox") actions.push({ key:"inbox", className:"note-card__inbox", label:"Inbox로 이동", icon:<Icon name="inbox" size={17}/>, onClick:()=>onMoveToInbox(item), inline:true, menuCore:true });
     if (onMoveToTodo && item.kind !== "task") actions.push({ key:"todo", className:"note-card__todo", label:"Todo로 이동", icon:<Icon name="todo" size={17}/>, onClick:()=>onMoveToTodo(item), inline:true, menuCore:true });
     if (canSetToday && onSetToday) actions.push({ key:"today", className:"note-card__today", label:"오늘로 지정", icon:<Icon name="today" size={17}/>, onClick:()=>onSetToday(item), inline:true, menuCore:true });
