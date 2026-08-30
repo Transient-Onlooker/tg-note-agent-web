@@ -259,6 +259,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const [editError, setEditError] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [emptyTrashError, setEmptyTrashError] = useState<string | null>(null);
+  const [isEmptyTrashConfirmationOpen, setIsEmptyTrashConfirmationOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
   const [feedbackExpiresAt, setFeedbackExpiresAt] = useState<number | null>(null);
@@ -842,6 +843,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     onSuccess: async (deletedCount) => {
       queryClient.setQueryData<Item[]>(["trash"], []);
       setEmptyTrashError(null);
+      setIsEmptyTrashConfirmationOpen(false);
       await Promise.all([invalidateItemData(), queryClient.invalidateQueries({ queryKey: ["trash"] })]);
       showActionFeedback(`${deletedCount}개 항목을 영구 삭제했습니다.`);
     },
@@ -877,6 +879,21 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     document.addEventListener("keydown", handleDeleteEscape);
     return () => document.removeEventListener("keydown", handleDeleteEscape);
   }, [deleteItemMutation.isPending, deleteTarget]);
+
+  useEffect(() => {
+    if (!isEmptyTrashConfirmationOpen) {
+      return;
+    }
+
+    const handleEmptyTrashEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape" && !emptyTrashMutation.isPending) {
+        setIsEmptyTrashConfirmationOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleEmptyTrashEscape);
+    return () => document.removeEventListener("keydown", handleEmptyTrashEscape);
+  }, [emptyTrashMutation.isPending, isEmptyTrashConfirmationOpen]);
 
   const inboxCount = itemsQuery.isSuccess ? itemsQuery.data.length : null;
   const notesCount = notesQuery.isSuccess ? notesQuery.data.length : null;
@@ -1436,7 +1453,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isError={trashQuery.isError}
             isSuccess={trashQuery.isSuccess}
             restoreError={restoreError}
-            isEmptying={emptyTrashMutation.isPending}
             emptyError={emptyTrashError}
             onRetry={() => {
               void trashQuery.refetch();
@@ -1445,7 +1461,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
               setRestoreError(null);
               return restoreItemMutation.mutateAsync(id);
             }}
-            onEmptyTrash={() => { setEmptyTrashError(null); return emptyTrashMutation.mutateAsync(); }}
+            onRequestEmptyTrash={() => { setEmptyTrashError(null); setIsEmptyTrashConfirmationOpen(true); }}
           />
         ) : (
           <PlaceholderView
@@ -1470,6 +1486,17 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
           isPending={deleteItemMutation.isPending}
           onCancel={closeDeleteConfirmation}
           onConfirm={confirmDelete}
+        />
+      )}
+      {isEmptyTrashConfirmationOpen && (
+        <DeleteConfirmModal
+          isPending={emptyTrashMutation.isPending}
+          title="휴지통을 비울까요?"
+          description="휴지통의 항목은 영구 삭제되며 되돌릴 수 없습니다. 원본 Telegram Capture는 유지됩니다."
+          confirmLabel="영구 삭제"
+          pendingLabel="삭제 중..."
+          onCancel={() => setIsEmptyTrashConfirmationOpen(false)}
+          onConfirm={() => { setEmptyTrashError(null); emptyTrashMutation.mutate(); }}
         />
       )}
     </>

@@ -38,7 +38,7 @@ type PrintJobProperties = {
   grams?: number;
   price?: number;
   payment: string;
-  queue_status: "waiting" | "printing" | "done" | "paused";
+  queue_status: "missing" | "waiting" | "printing" | "done" | "paused";
   model_url: string;
   note: string;
 };
@@ -57,6 +57,7 @@ const printCommandKeys = new Set([
 ]);
 
 const queueStatuses = new Set<PrintJobProperties["queue_status"]>([
+  "missing",
   "waiting",
   "printing",
   "done",
@@ -195,22 +196,22 @@ function parsePrintCommandArguments(
 
     const keyMatch = /^[A-Za-z_]+/.exec(input.slice(index));
     if (!keyMatch) {
-      return { error: "Expected a field name." };
+      return { error: "필드 이름을 입력해 주세요." };
     }
 
     const key = keyMatch[0];
     index += key.length;
 
     if (input[index] !== "=") {
-      return { error: `Expected = after ${key}.` };
+      return { error: `\"${key}\" 뒤에 =을 입력해 주세요.` };
     }
 
     if (!printCommandKeys.has(key)) {
-      return { error: `Unsupported field: ${key}.` };
+      return { error: `지원하지 않는 필드입니다: ${key}` };
     }
 
     if (Object.prototype.hasOwnProperty.call(values, key)) {
-      return { error: `Duplicate field: ${key}.` };
+      return { error: `같은 필드를 두 번 입력할 수 없습니다: ${key}` };
     }
 
     index += 1;
@@ -227,7 +228,7 @@ function parsePrintCommandArguments(
         if (character === "\\") {
           index += 1;
           if (index >= input.length) {
-            return { error: "Unfinished escape sequence." };
+            return { error: "따옴표 안의 이스케이프 표기가 끝나지 않았습니다." };
           }
           value += input[index];
           index += 1;
@@ -245,11 +246,11 @@ function parsePrintCommandArguments(
       }
 
       if (!closed) {
-        return { error: "Unclosed quoted value." };
+        return { error: "따옴표로 묶은 값이 닫히지 않았습니다." };
       }
 
       if (index < input.length && !/\s/.test(input[index])) {
-        return { error: "Separate fields with whitespace." };
+        return { error: "각 필드는 공백으로 구분해 주세요." };
       }
     } else {
       const valueStart = index;
@@ -263,7 +264,7 @@ function parsePrintCommandArguments(
   }
 
   if (!values.item?.trim()) {
-    return { error: "item is required." };
+    return { error: "출력물(item)은 필수입니다." };
   }
 
   return { values };
@@ -280,7 +281,7 @@ function parseNonNegativeNumber(
   const number = Number(value);
 
   if (!Number.isFinite(number) || number < 0) {
-    return { error: `${field} must be a non-negative number.` };
+    return { error: field === "grams" ? "무게(grams)는 0 이상의 숫자로 입력해 주세요." : "금액(price)은 0 이상의 숫자로 입력해 주세요." };
   }
 
   return { value: number };
@@ -292,13 +293,13 @@ function parseDueAt(value: string | undefined): ParseResult<string | null> {
   }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return { error: "date must use YYYY-MM-DD." };
+    return { error: "날짜(date)는 YYYY-MM-DD 형식으로 입력해 주세요." };
   }
 
   const date = new Date(`${value}T00:00:00.000Z`);
 
   if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
-    return { error: "date is invalid." };
+    return { error: "유효하지 않은 날짜(date)입니다." };
   }
 
   return { value: date.toISOString() };
@@ -316,9 +317,9 @@ function buildPrintJob(
   const dueAt = parseDueAt(values.date);
   if ("error" in dueAt) return dueAt;
 
-  const status = values.status?.trim() || "waiting";
+  const status = values.status?.trim() || "missing";
   if (!queueStatuses.has(status as PrintJobProperties["queue_status"])) {
-    return { error: "status must be waiting, printing, done, or paused." };
+    return { error: "상태(status)는 missing(미상), waiting(대기), printing(출력 중), done(완료), paused(보류) 중 하나여야 합니다." };
   }
 
   return {
@@ -340,7 +341,7 @@ function buildPrintJob(
 }
 
 function printUsage(error: string) {
-  return `/print error: ${error} Usage: /print item="name" customer="name" colors="black,white" grams=250 price=5000 payment=paid status=waiting date=2026-09-03 model="https://..." note="note"`;
+  return `출력 작업을 만들지 못했습니다.\n${error}\n\n예시:\n/print item="케이스" customer="홍길동" colors="black,white" grams=250 price=5000 payment=paid status=missing date=2026-09-03 model="https://..." note="급함"\n\n출력물(item)은 필수이며, 나머지 필드는 선택입니다.`;
 }
 
 async function nextPrintQueuePosition(env: TelegramEnvironment) {

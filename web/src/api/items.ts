@@ -198,7 +198,7 @@ export async function createPrintJob(): Promise<void> {
     body: JSON.stringify({
       body: "새 출력 작업",
       kind: "print_job",
-      properties_json: "{}",
+      properties_json: JSON.stringify({ queue_status: "missing" }),
     }),
   });
 

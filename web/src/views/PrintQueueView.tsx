@@ -35,8 +35,8 @@ type DragState = {
   startY: number;
 };
 
-const queueStatusOptions: Array<{ value: "" | QueueStatus; label: string }> = [
-  { value: "", label: "미상" },
+const queueStatusOptions: Array<{ value: QueueStatus; label: string }> = [
+  { value: "missing", label: "미상" },
   { value: "waiting", label: "대기" },
   { value: "printing", label: "출력중" },
   { value: "done", label: "완료" },
@@ -45,7 +45,10 @@ const queueStatusOptions: Array<{ value: "" | QueueStatus; label: string }> = [
 
 function getQueueStatusOptions(properties: PrintJobProperties) {
   const currentStatus = typeof properties.queue_status === "string" ? properties.queue_status : "";
-  if (currentStatus && !queueStatusOptions.some((option) => option.value === currentStatus)) {
+  if (!currentStatus) {
+    return [{ value: "", label: "미상 (기존 값)" }, ...queueStatusOptions];
+  }
+  if (!queueStatusOptions.some((option) => option.value === currentStatus)) {
     return [...queueStatusOptions, { value: currentStatus as QueueStatus, label: currentStatus }];
   }
   return queueStatusOptions;
