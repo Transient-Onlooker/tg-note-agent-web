@@ -63,7 +63,7 @@ export function AppShell({
           <div className="brand">
             <span className="brand__mark" aria-hidden="true">
               <span className="material-symbols-outlined">
-                congenital
+                orthopedics
               </span>
             </span>
 
@@ -186,7 +186,7 @@ export function AppShell({
           <div className="mobile-brand">
             <span className="mobile-brand__mark">
               <span className="material-symbols-outlined">
-                congenital
+                orthopedics
               </span>
             </span>
             <strong>NoteRelay</strong>

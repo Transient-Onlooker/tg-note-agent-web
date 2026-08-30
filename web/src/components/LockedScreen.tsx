@@ -33,7 +33,7 @@ export function LockedScreen({
       <form className="lock-card" onSubmit={handleSubmit}>
         <div className="lock-card__brand">
           <span className="brand__mark" aria-hidden="true">
-            <span className="material-symbols-outlined">congenital</span>
+            <span className="material-symbols-outlined">orthopedics</span>
           </span>
           <strong>NoteRelay</strong>
         </div>

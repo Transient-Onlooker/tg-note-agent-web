@@ -38,9 +38,8 @@
 
 .brand__mark,
 .mobile-brand__mark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   color: #ffffff;
   background: var(--accent);
   border-radius: 10px;
@@ -49,9 +48,7 @@
 
 .brand__mark > .material-symbols-outlined,
 .mobile-brand__mark > .material-symbols-outlined {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   width: 26px;
   height: 26px;
   color: #ffffff !important;
@@ -62,9 +59,9 @@
     "opsz" 32 !important;
   font-size: 26px !important;
   font-weight: 600 !important;
-  line-height: 0;
+  line-height: 1;
   text-align: center;
-  transform: translateY(1px);
+  transform: translateY(-1px);
 }
 
 .brand__mark {
