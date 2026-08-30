@@ -1,4 +1,4 @@
-import { Fragment, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { Fragment, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { Item } from "../api/items";
 import { CardActionButton } from "../components/CardActionButton";
 import { Icon } from "../components/Icon";
@@ -43,6 +43,8 @@ type NotesViewProps = {
   onMoveToQuestion?: (item: Item) => Promise<unknown>;
   onSetToday?: (item: Item) => Promise<unknown>;
   onClearDue?: (item: Item) => Promise<unknown>;
+  renderItemDetails?: (item: Item) => ReactNode;
+  renderBeforeList?: ReactNode;
 };
 
 export function NotesView({
@@ -79,6 +81,8 @@ export function NotesView({
   onMoveToQuestion,
   onSetToday,
   onClearDue,
+  renderItemDetails,
+  renderBeforeList,
   showDueControls = true,
   showCreatedAt = true,
 }: NotesViewProps) {
@@ -116,6 +120,8 @@ export function NotesView({
           </p>
         </div>
       </header>
+
+      {renderBeforeList}
 
       {deleteError && (
         <p className="inline-error delete-error" role="alert">
@@ -276,6 +282,7 @@ export function NotesView({
                         </>
                       )}
                     </div>
+                    {renderItemDetails?.(item)}
                   </>
                 )}
               </div>

@@ -2194,3 +2194,105 @@
     width: min(260px, 58vw);
   }
 }
+
+
+.purchase-tools {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.purchase-filter-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.purchase-filter-tabs button,
+.purchase-create button,
+.purchase-details button {
+  min-height: 30px;
+  padding: 6px 10px;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 650;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+}
+
+.purchase-filter-tabs button.is-active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: rgba(49, 91, 216, 0.32);
+}
+
+.purchase-create {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 92px minmax(160px, 1fr) auto;
+  gap: 8px;
+}
+
+.purchase-create input,
+.purchase-create select,
+.purchase-details__editor input,
+.purchase-details__editor select {
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+}
+
+.purchase-details {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.purchase-details__summary,
+.purchase-details__editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+}
+
+.purchase-source {
+  padding: 2px 6px;
+  color: var(--text-soft);
+  font-size: 10px;
+  font-weight: 650;
+  background: var(--surface-subtle);
+  border-radius: 5px;
+}
+
+.purchase-details a {
+  max-width: min(360px, 100%);
+  overflow: hidden;
+  color: var(--accent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.purchase-url--invalid {
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+}
+
+.purchase-details__editor input {
+  flex: 1 1 180px;
+}
+
+@media (max-width: 700px) {
+  .purchase-create {
+    grid-template-columns: 1fr 92px;
+  }
+
+  .purchase-create input[aria-label="상품 URL"] {
+    grid-column: 1 / -1;
+  }
+}

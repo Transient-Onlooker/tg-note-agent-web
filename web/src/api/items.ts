@@ -274,3 +274,43 @@ export async function createReferenceItem(body: string, referenceType: Reference
   });
   if (!response.ok) throw new Error(`Failed to create reference: ${response.status}`);
 }
+
+
+export type PurchaseSource = "domestic" | "overseas";
+
+export async function createPurchaseItem(
+  body: string,
+  source: PurchaseSource,
+  url: string,
+): Promise<void> {
+  const trimmedBody = body.trim();
+
+  if (!trimmedBody) {
+    throw new Error("Purchase body cannot be empty");
+  }
+
+  const trimmedUrl = url.trim();
+  const properties: Record<string, string> = {
+    purchase_source: source,
+  };
+
+  if (trimmedUrl) {
+    properties.purchase_url = trimmedUrl;
+  }
+
+  const response = await authenticatedFetch(`${API_BASE_URL}/api/items`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify({
+      body: trimmedBody,
+      kind: "purchase",
+      properties_json: JSON.stringify(properties),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to create purchase: ${response.status}`);
+  }
+}

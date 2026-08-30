@@ -11,6 +11,7 @@ import {
 import {
   createItem,
   createPrintJob,
+  createPurchaseItem,
   createReferenceItem,
   deleteItem,
   getItemCounts,
@@ -22,6 +23,7 @@ import {
   updateItemFields,
   type Item,
   type ItemKind,
+  type PurchaseSource,
   type ReferenceType,
   type UpdateItemInput,
 } from "./api/items";
@@ -439,6 +441,16 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       showActionFeedback("Print Queue에 작업을 추가했습니다.");
     },
     onError: () => showActionFeedback("작업을 추가하지 못했습니다.", "error"),
+  });
+
+  const createPurchaseMutation = useMutation({
+    mutationFn: ({ body, source, url }: { body: string; source: PurchaseSource; url: string }) =>
+      createPurchaseItem(body, source, url),
+    onSuccess: async () => {
+      await invalidateItemData();
+      showActionFeedback("Purchase 항목을 추가했습니다.");
+    },
+    onError: () => showActionFeedback("Purchase 항목을 추가하지 못했습니다.", "error"),
   });
 
   const createReferenceMutation = useMutation({
@@ -1248,6 +1260,17 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
           <PurchaseView
             showCreatedAt={false}
             items={purchaseQuery.data ?? []}
+            onCreate={(body, source, url) =>
+              createPurchaseMutation.mutateAsync({ body, source, url })
+            }
+            isCreating={createPurchaseMutation.isPending}
+            createError={createPurchaseMutation.isError}
+            onUpdateProperties={(id, propertiesJson) =>
+              updateItemMutation.mutateAsync({
+                id,
+                input: { properties_json: propertiesJson },
+              })
+            }
             notesCount={purchaseQuery.isSuccess ? purchaseQuery.data.length : null}
             isPending={purchaseQuery.isPending}
             isError={purchaseQuery.isError}
