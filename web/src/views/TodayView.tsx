@@ -1,18 +1,7 @@
 import type { ComponentProps } from "react";
 import { NotesView } from "./NotesView";
-
-type TodayViewProps = Omit<
-  ComponentProps<typeof NotesView>,
-  "viewTitle" | "viewDescription" | "emptyDescription" | "isPurchasing" | "isSendingToPrintQueue" | "isSettingToday"
->;
-
-export function TodayView(props: TodayViewProps) {
-  return (
-    <NotesView
-      {...props}
-      viewTitle="Today"
-      viewDescription="Items due today, based on your local time."
-      emptyDescription="오늘 처리할 메모가 없습니다."
-    />
-  );
-}
+type TodayViewProps = Omit<ComponentProps<typeof NotesView>, "viewTitle"|"viewDescription"|"emptyDescription"|"renderBeforeList">;
+const weekdayLabels=["월","화","수","목","금","토","일"];
+function getWeekDays(){ const now=new Date(); const today=new Date(now.getFullYear(),now.getMonth(),now.getDate()); const mondayOffset=(today.getDay()+6)%7; const monday=new Date(today); monday.setDate(today.getDate()-mondayOffset); return Array.from({length:7},(_,i)=>{const date=new Date(monday);date.setDate(monday.getDate()+i);return{date,isToday:date.getTime()===today.getTime()};}); }
+function TodayCalendar(){ const days=getWeekDays(); const today=days.find(d=>d.isToday)?.date??new Date(); return <section className="today-calendar" aria-label="이번 주 달력"><div className="today-calendar__heading"><strong>{today.getFullYear()}년 {today.getMonth()+1}월</strong><span>이번 주</span></div><div className="today-calendar__days">{days.map(({date,isToday},i)=><div className={`today-calendar__day${isToday?" is-today":""}`} aria-current={isToday?"date":undefined} key={`${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`}><span>{weekdayLabels[i]}</span><strong>{date.getDate()}</strong></div>)}</div></section>; }
+export function TodayView(props:TodayViewProps){ return <NotesView {...props} viewTitle="Today" viewDescription="오늘까지 처리할 항목을 로컬 날짜 기준으로 모아봅니다." emptyDescription="오늘 처리할 메모가 없습니다." renderBeforeList={<TodayCalendar/>}/>; }

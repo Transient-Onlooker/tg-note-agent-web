@@ -34,7 +34,7 @@ export const navigationGroups: NavigationGroup[] = [
       {
         id: "todo",
         label: "Todo",
-        description: "Active tasks.",
+        description: "아직 처리해야 할 Todo입니다.",
       },
       {
         id: "today",
@@ -87,6 +87,6 @@ export const navigationGroups: NavigationGroup[] = [
 
 
 export const moreNavigationItems: NavigationItem[] = [
-  { id: "modeling", label: "3D 모델링", description: "3D 모델링 참고 자료를 모아봅니다." },
-  { id: "question", label: "궁금증", description: "나중에 확인할 질문을 모아봅니다." },
+  { id: "modeling", label: "3D 모델링", description: "앞으로 모델링할 것과 관련 메모를 모아둡니다." },
+  { id: "question", label: "궁금증", description: "나중에 확인하거나 알아볼 궁금증을 모아둡니다." },
 ];

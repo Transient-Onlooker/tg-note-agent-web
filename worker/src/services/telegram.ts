@@ -35,8 +35,8 @@ type ParseResult<T> = { value: T } | { error: string };
 type PrintJobProperties = {
   customer: string;
   colors: string[];
-  grams: number;
-  price: number;
+  grams?: number;
+  price?: number;
   payment: string;
   queue_status: "waiting" | "printing" | "done" | "paused";
   model_url: string;
@@ -272,9 +272,9 @@ function parsePrintCommandArguments(
 function parseNonNegativeNumber(
   value: string | undefined,
   field: "grams" | "price",
-): ParseResult<number> {
+): ParseResult<number | undefined> {
   if (value === undefined || !value.trim()) {
-    return { value: 0 };
+    return { value: undefined };
   }
 
   const number = Number(value);
@@ -329,8 +329,8 @@ function buildPrintJob(
       colors: values.colors
         ? values.colors.split(",").map((color) => color.trim()).filter(Boolean)
         : [],
-      grams: grams.value,
-      price: price.value,
+      ...(grams.value === undefined ? {} : { grams: grams.value }),
+      ...(price.value === undefined ? {} : { price: price.value }),
       payment: values.payment?.trim() ?? "",
       queue_status: status as PrintJobProperties["queue_status"],
       model_url: values.model?.trim() ?? "",

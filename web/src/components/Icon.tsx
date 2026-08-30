@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { ViewId } from "../config/navigation";
-type IconName =
+export type IconName =
   | ViewId
   | "menu"
   | "close"

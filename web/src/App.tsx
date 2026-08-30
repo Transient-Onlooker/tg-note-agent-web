@@ -12,8 +12,8 @@ import {
   createItem,
   createPrintJob,
   createPurchaseItem,
-  createReferenceItem,
   deleteItem,
+  emptyTrash,
   getItemCounts,
   itemQueryKeys,
   itemCountQueryKeys,
@@ -258,6 +258,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const [editDueAt, setEditDueAt] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [emptyTrashError, setEmptyTrashError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
   const [feedbackExpiresAt, setFeedbackExpiresAt] = useState<number | null>(null);
@@ -390,12 +391,13 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const projectsQuery = useQuery({
     queryKey: projectQueryKeys.list(),
     queryFn: listProjects,
-    enabled: activeView === "projects",
   });
+  const activeProjects = (projectsQuery.data ?? []).filter((project) => project.status === "active");
+  const projectOptions = activeProjects.map(({ id, name }) => ({ id, name }));
 
-  const resolvedProjectId = projectsQuery.data?.some((project) => project.id === selectedProjectId)
+  const resolvedProjectId = activeProjects.some((project) => project.id === selectedProjectId)
     ? selectedProjectId
-    : projectsQuery.data?.[0]?.id ?? null;
+    : activeProjects[0]?.id ?? null;
   const projectItemsFilters = resolvedProjectId
     ? { status: "active" as const, projectId: resolvedProjectId }
     : null;
@@ -486,15 +488,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     onError: () => showActionFeedback("Purchase 항목을 추가하지 못했습니다.", "error"),
   });
 
-  const createReferenceMutation = useMutation({
-    mutationFn: ({ body, referenceType }: { body: string; referenceType: "modeling" | "question" }) =>
-      createReferenceItem(body, referenceType),
-    onSuccess: async () => {
-      await invalidateItemData();
-    },
-    onError: () => showActionFeedback("저장하지 못했습니다.", "error"),
-  });
-
   const invalidateProjectData = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.all }),
@@ -507,18 +500,18 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     onSuccess: async (project) => {
       setSelectedProjectId(project.id);
       await queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
-      showActionFeedback("Project created.");
+      showActionFeedback("프로젝트를 만들었습니다.");
     },
-    onError: () => showActionFeedback("Project could not be created.", "error"),
+    onError: () => showActionFeedback("프로젝트를 만들지 못했습니다.", "error"),
   });
 
   const updateProjectMutation = useMutation({
     mutationFn: ({ project, name }: { project: Project; name: string }) => updateProject(project.id, { name }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
-      showActionFeedback("Project updated.");
+      showActionFeedback("프로젝트 이름을 수정했습니다.");
     },
-    onError: () => showActionFeedback("Project could not be updated.", "error"),
+    onError: () => showActionFeedback("프로젝트 이름을 수정하지 못했습니다.", "error"),
   });
 
   const deleteProjectMutation = useMutation({
@@ -526,9 +519,9 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     onSuccess: async (_result, project) => {
       if (selectedProjectId === project.id) setSelectedProjectId(null);
       await invalidateProjectData();
-      showActionFeedback("Project deleted. Connected items were kept.");
+      showActionFeedback("프로젝트를 삭제했습니다. 연결된 항목은 유지됩니다.");
     },
-    onError: () => showActionFeedback("Project could not be deleted.", "error"),
+    onError: () => showActionFeedback("프로젝트를 삭제하지 못했습니다.", "error"),
   });
 
   const updateItemMutation = useMutation({
@@ -718,16 +711,11 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             : items?.filter((item) => item.id !== updatedItem.id),
       );
       await invalidateItemData();
-      const labels = {
-        inbox: "Inbox",
-        note: "Notes",
-        task: "Todo",
-        purchase: "Purchase",
-        print_job: "Print Queue",
-        reference: "Reference",
-      } as const;
+      const targetLabel = variables.kind === "reference"
+        ? variables.referenceType === "modeling" ? "3D 모델링" : "궁금증"
+        : ({ inbox: "Inbox", note: "Notes", task: "Todo", purchase: "Purchase", print_job: "Print Queue" } as const)[variables.kind];
       if (latestActionByItemRef.current.get(updatedItem.id) === variables.actionId) {
-        showUndoFeedback(`${labels[variables.kind]}로 이동했습니다.`, { itemId: updatedItem.id, kind: "move", snapshot: variables.snapshot }, variables.actionId);
+        showUndoFeedback(`${targetLabel}으로 이동했습니다.`, { itemId: updatedItem.id, kind: "move", snapshot: variables.snapshot }, variables.actionId);
       }
     },
     onError: (_error, variables, context) => {
@@ -809,7 +797,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       syncStatusItemCache(updatedItem);
       await invalidateItemData();
       if (latestActionByItemRef.current.get(updatedItem.id) === variables.actionId) {
-        showUndoFeedback("Archive로 이동했습니다.", { itemId: updatedItem.id, kind: "archive", snapshot: variables.snapshot }, variables.actionId);
+        showUndoFeedback("보관함으로 이동했습니다.", { itemId: updatedItem.id, kind: "archive", snapshot: variables.snapshot }, variables.actionId);
       }
     },
     onError: (_error, variables, context) => {
@@ -817,7 +805,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       context?.snapshots.forEach(([queryKey, items]) => {
         queryClient.setQueryData(queryKey, items);
       });
-      showActionFeedback("Archive로 이동하지 못했습니다.", "error");
+      showActionFeedback("보관함으로 이동하지 못했습니다.", "error");
     },
   });
 
@@ -847,6 +835,17 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       setRestoreError("복원하지 못했습니다.");
       showActionFeedback("복원하지 못했습니다.", "error");
     },
+  });
+
+  const emptyTrashMutation = useMutation({
+    mutationFn: emptyTrash,
+    onSuccess: async (deletedCount) => {
+      queryClient.setQueryData<Item[]>(["trash"], []);
+      setEmptyTrashError(null);
+      await Promise.all([invalidateItemData(), queryClient.invalidateQueries({ queryKey: ["trash"] })]);
+      showActionFeedback(`${deletedCount}개 항목을 영구 삭제했습니다.`);
+    },
+    onError: () => { setEmptyTrashError("휴지통을 비우지 못했습니다."); showActionFeedback("휴지통을 비우지 못했습니다.", "error"); },
   });
 
   useEffect(() => {
@@ -911,6 +910,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     setActiveView(view);
     setIsSidebarOpen(false);
     setRestoreError(null);
+    setEmptyTrashError(null);
   };
 
   const startEditing = (item: Item) => {
@@ -935,31 +935,18 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     setEditError(null);
   };
 
-  const saveEditing = () => {
+  const saveEditing = (options?: { propertiesJson?: string; includeDue?: boolean }) => {
     const trimmedBody = editDraft.trim();
-
-    if (!editingItemId || !trimmedBody || updateItemMutation.isPending) {
-      return;
-    }
-
+    if (!editingItemId || !trimmedBody || updateItemMutation.isPending) return;
     const itemId = editingItemId;
     const editorSession = editorSessionRef.current;
-    const draftSnapshot: EditDraftSnapshot = {
-      body: editDraft,
-      dueAt: editDueAt,
-    };
+    const draftSnapshot: EditDraftSnapshot = { body: editDraft, dueAt: editDueAt };
     const input: UpdateItemInput = {
       body: trimmedBody,
-      due_at: fromDateTimeInputValue(editDueAt),
+      ...(options?.includeDue === false ? {} : { due_at: fromDateTimeInputValue(editDueAt) }),
+      ...(options?.propertiesJson === undefined ? {} : { properties_json: options.propertiesJson }),
     };
-
-    editorSessionRef.current += 1;
-    editingItemIdRef.current = null;
-    setEditingItemId(null);
-    setEditDraft("");
-    setEditDueAt("");
-    setEditError(null);
-
+    editorSessionRef.current += 1; editingItemIdRef.current = null; setEditingItemId(null); setEditDraft(""); setEditDueAt(""); setEditError(null);
     updateItemMutation.mutate({ id: itemId, input, draft: draftSnapshot, editorSession });
   };
 
@@ -1066,6 +1053,9 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     }
   };
 
+  const changeItemProject = (item: Item, projectId: string | null) =>
+    updateItemMutation.mutateAsync({ id: item.id, input: { project_id: projectId } });
+
   const referenceItems = referenceQuery.data?.filter((item) =>
     hasReferenceType(item, activeView === "modeling" ? "modeling" : "question"),
   ) ?? [];
@@ -1099,9 +1089,9 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     onMoveToQuestion: activeView === "modeling"
       ? (item: Item) => classifyItem(item, "reference", "question")
       : undefined,
-    onSetToday: setItemDueToday,
-    onClearDue: clearItemDue,
     onDeleteRequest: openDeleteConfirmation,
+    projects: projectOptions,
+    onProjectChange: changeItemProject,
   };
 
   const activeViewCount = (() => {
@@ -1110,7 +1100,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       case "todo": return todoCount;
       case "today": return todayCount;
       case "notes": return notesCount;
-      case "projects": return projectsQuery.isSuccess ? projectsQuery.data.length : null;
+      case "projects": return projectsQuery.isSuccess ? activeProjects.length : null;
       case "print-queue": return printQueueQuery.isSuccess ? printQueueQuery.data.length : null;
       case "purchase": return purchaseQuery.isSuccess ? purchaseQuery.data.length : null;
       case "archive": return archiveCount;
@@ -1120,12 +1110,6 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       default: return null;
     }
   })();
-
-  const createReference = (body: string) =>
-    createReferenceMutation.mutateAsync({
-      body,
-      referenceType: activeView === "modeling" ? "modeling" : "question",
-    });
 
   return (
     <>
@@ -1187,6 +1171,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onMoveToQuestion={(item) => classifyItem(item, "reference", "question")}
             onSetToday={setItemDueToday}
             onDeleteRequest={openDeleteConfirmation}
+            projects={projectOptions}
+            onProjectChange={changeItemProject}
           />
         ) : activeView === "notes" ? (
           <NotesView
@@ -1226,11 +1212,13 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onMoveToQuestion={(item) => classifyItem(item, "reference", "question")}
             onSetToday={setItemDueToday}
             onDeleteRequest={openDeleteConfirmation}
+            projects={projectOptions}
+            onProjectChange={changeItemProject}
           />
         ) : activeView === "todo" ? (
           <NotesView
             viewTitle="Todo"
-            viewDescription="Active tasks that still need your attention."
+            viewDescription="아직 처리해야 할 Todo를 기한 순서로 확인합니다."
             emptyDescription="오늘로 지정하거나 Task로 분류한 메모가 여기에 표시됩니다."
             showCreatedAt={false}
             items={todoItems}
@@ -1269,6 +1257,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onSetToday={setItemDueToday}
             onClearDue={clearItemDue}
             onDeleteRequest={openDeleteConfirmation}
+            projects={projectOptions}
+            onProjectChange={changeItemProject}
           />
         ) : activeView === "today" ? (
           <TodayView
@@ -1301,6 +1291,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onSaveEditing={saveEditing}
             onClearDue={clearItemDue}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
+            onMoveToTodo={(item) => classifyItem(item, "task")}
             onMoveToNotes={(item) => classifyItem(item, "note")}
             onPurchase={(item) => classifyItem(item, "purchase")}
             onSendToPrintQueue={(item) => classifyItem(item, "print_job")}
@@ -1309,26 +1300,22 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onSetToday={setItemDueToday}
             onArchive={archiveItem}
             onDeleteRequest={openDeleteConfirmation}
+            projects={projectOptions}
+            onProjectChange={changeItemProject}
           />
         ) : activeView === "modeling" ? (
           <ReferenceView
             {...referenceViewProps}
             referenceType="modeling"
-            onCreate={createReference}
-            isCreating={createReferenceMutation.isPending}
-            createError={createReferenceMutation.isError}
           />
         ) : activeView === "question" ? (
           <ReferenceView
             {...referenceViewProps}
             referenceType="question"
-            onCreate={createReference}
-            isCreating={createReferenceMutation.isPending}
-            createError={createReferenceMutation.isError}
           />
         ) : activeView === "projects" ? (
           <ProjectsView
-            projects={projectsQuery.data ?? []}
+            projects={activeProjects}
             selectedProjectId={resolvedProjectId}
             projectItems={projectItemsQuery.data ?? []}
             assignableItems={projectAssignableItemsQuery.data ?? []}
@@ -1352,19 +1339,12 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
           />
         ) : activeView === "purchase" ? (
           <PurchaseView
-            showCreatedAt={false}
             items={purchaseQuery.data ?? []}
             onCreate={(body, source, url) =>
               createPurchaseMutation.mutateAsync({ body, source, url })
             }
             isCreating={createPurchaseMutation.isPending}
             createError={createPurchaseMutation.isError}
-            onUpdateProperties={(id, propertiesJson) =>
-              updateItemMutation.mutateAsync({
-                id,
-                input: { properties_json: propertiesJson },
-              })
-            }
             notesCount={purchaseQuery.isSuccess ? purchaseQuery.data.length : null}
             isPending={purchaseQuery.isPending}
             isError={purchaseQuery.isError}
@@ -1389,13 +1369,15 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             }}
             onEditDueChange={setEditDueAt}
             onCancelEditing={cancelEditing}
-            onSaveEditing={saveEditing}
+            onSavePurchaseEditing={(propertiesJson) => saveEditing({ propertiesJson, includeDue: false })}
             onMoveToTodo={(item) => classifyItem(item, "task")}
             onMoveToInbox={(item) => classifyItem(item, "inbox")}
             onArchive={archiveItem}
             onMoveToModeling={(item) => classifyItem(item, "reference", "modeling")}
             onMoveToQuestion={(item) => classifyItem(item, "reference", "question")}
             onDeleteRequest={openDeleteConfirmation}
+            projects={projectOptions}
+            onProjectChange={changeItemProject}
           />
         ) : activeView === "print-queue" ? (
           <PrintQueueView
@@ -1453,6 +1435,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             isError={trashQuery.isError}
             isSuccess={trashQuery.isSuccess}
             restoreError={restoreError}
+            isEmptying={emptyTrashMutation.isPending}
+            emptyError={emptyTrashError}
             onRetry={() => {
               void trashQuery.refetch();
             }}
@@ -1460,6 +1444,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
               setRestoreError(null);
               return restoreItemMutation.mutateAsync(id);
             }}
+            onEmptyTrash={() => { setEmptyTrashError(null); return emptyTrashMutation.mutateAsync(); }}
           />
         ) : (
           <PlaceholderView
@@ -1470,11 +1455,13 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
       </AppShell>
       {actionFeedback && (
         <div className={`action-feedback action-feedback--${actionFeedback.tone}`} role="status">
-          <span>{actionFeedback.message}</span>
+          <span className="action-feedback__message">{actionFeedback.message}</span>
           {actionFeedback.undo && (
-            <button type="button" onClick={() => void handleUndo()}>실행 취소</button>
+            <>
+              <button className="action-feedback__undo" type="button" onClick={() => void handleUndo()}>실행 취소</button>
+              <span className="action-feedback__timer" aria-label="실행 취소 가능 시간">{Math.max(1, Math.ceil(feedbackRemainingMs / 1000))}s</span>
+            </>
           )}
-          <span aria-label="Remaining time">{Math.ceil(feedbackRemainingMs / 1000)}s</span>
         </div>
       )}
       {deleteTarget && (

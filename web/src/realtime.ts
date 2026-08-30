@@ -7,13 +7,16 @@ import {
   getAccessKey,
 } from "./api/auth";
 import { itemCountQueryKeys, itemQueryKeys } from "./api/items";
+import { projectQueryKeys } from "./api/projects";
 
 type RealtimeEvent = {
   type:
     | "item_created"
     | "item_updated"
     | "item_deleted"
-    | "item_restored";
+    | "item_restored"
+    | "trash_emptied"
+    | "project_changed";
   item_id?: string;
 };
 
@@ -28,7 +31,13 @@ function getWebSocketUrl() {
 function notifyQueries(queryClient: QueryClient, event: RealtimeEvent) {
   void queryClient.invalidateQueries({ queryKey: itemCountQueryKeys.all });
 
-  if (event.type === "item_deleted" || event.type === "item_restored") {
+  if (event.type === "project_changed") {
+    void queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+    void queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
+    return;
+  }
+
+  if (event.type === "item_deleted" || event.type === "item_restored" || event.type === "trash_emptied") {
     void queryClient.invalidateQueries({ queryKey: itemQueryKeys.all });
     void queryClient.invalidateQueries({ queryKey: ["trash"] });
     return;
@@ -95,7 +104,9 @@ export function useRealtimeSync(queryClient: QueryClient): void {
           event.type === "item_created" ||
           event.type === "item_updated" ||
           event.type === "item_deleted" ||
-          event.type === "item_restored"
+          event.type === "item_restored" ||
+          event.type === "trash_emptied" ||
+          event.type === "project_changed"
         ) {
           notifyQueries(queryClient, event);
         }

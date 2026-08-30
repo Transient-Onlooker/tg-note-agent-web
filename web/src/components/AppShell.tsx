@@ -24,10 +24,11 @@ const itemCountKeys: Partial<Record<ViewId, keyof ItemCounts>> = {
   todo: "todo",
   today: "today",
   notes: "notes",
+  modeling: "modeling",
+  question: "question",
   "print-queue": "printQueue",
   purchase: "purchase",
   archive: "archive",
-  trash: "trash",
 };
 
 export function AppShell({
@@ -62,7 +63,7 @@ export function AppShell({
           <div className="brand">
             <span className="brand__mark" aria-hidden="true">
               <span className="material-symbols-outlined">
-                orthopedics
+                congenital
               </span>
             </span>
 
@@ -120,31 +121,26 @@ export function AppShell({
                   <button
                     type="button"
                     className={`nav-item nav-more__toggle${isMoreOpen ? " is-open" : ""}${isMoreActive ? " is-active" : ""}`}
-                    aria-expanded={isMoreOpen}
+                    aria-expanded={isMoreOpen || isMoreActive}
                     aria-current={isMoreActive ? "page" : undefined}
                     onClick={() => setIsMoreOpen((open) => !open)}
                   >
                     <Icon name="more" size={18} />
-                    <span>⋯ 더보기</span>
+                    <span>더보기</span>
                   </button>
 
-                  {isMoreOpen && (
+                  {(isMoreOpen || isMoreActive) && (
                     <div className="nav-more__items">
-                      {moreNavigationItems.map((item) => (
-                        <button
-                          type="button"
-                          className={`nav-item${activeView === item.id ? " is-active" : ""}`}
-                          onClick={() => {
-                            onNavigate(item.id);
-                            setIsMoreOpen(false);
-                          }}
-                          aria-current={activeView === item.id ? "page" : undefined}
-                          key={item.id}
-                        >
-                          <Icon name={item.id} size={18} />
-                          <span>{item.label}</span>
-                        </button>
-                      ))}
+                      {moreNavigationItems.map((item) => {
+                        const countKey = itemCountKeys[item.id];
+                        const itemCount = counts && countKey ? counts[countKey] : null;
+                        return (
+                          <button type="button" className={`nav-item${activeView === item.id ? " is-active" : ""}`} onClick={() => { onNavigate(item.id); setIsMoreOpen(false); }} aria-current={activeView === item.id ? "page" : undefined} key={item.id}>
+                            <Icon name={item.id} size={18} /><span>{item.label}</span>
+                            {itemCount !== null && itemCount > 0 && <span className="nav-item__count">{itemCount}</span>}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -190,7 +186,7 @@ export function AppShell({
           <div className="mobile-brand">
             <span className="mobile-brand__mark">
               <span className="material-symbols-outlined">
-                orthopedics
+                congenital
               </span>
             </span>
             <strong>NoteRelay</strong>

@@ -179,6 +179,8 @@ app.get("/api/counts", async (c) => {
         SUM(CASE WHEN deleted_at IS NULL AND kind = 'task' AND status = 'active' THEN 1 ELSE 0 END) AS todo,
         SUM(CASE WHEN deleted_at IS NULL AND status = 'active' AND due_at < ? THEN 1 ELSE 0 END) AS today,
         SUM(CASE WHEN deleted_at IS NULL AND kind = 'note' AND status = 'active' THEN 1 ELSE 0 END) AS notes,
+        SUM(CASE WHEN deleted_at IS NULL AND kind = 'reference' AND status = 'active' AND json_valid(properties_json) AND json_extract(properties_json, '$.reference_type') = 'modeling' THEN 1 ELSE 0 END) AS modeling,
+        SUM(CASE WHEN deleted_at IS NULL AND kind = 'reference' AND status = 'active' AND json_valid(properties_json) AND json_extract(properties_json, '$.reference_type') = 'question' THEN 1 ELSE 0 END) AS question,
         SUM(CASE WHEN deleted_at IS NULL AND kind = 'print_job' AND status = 'active' THEN 1 ELSE 0 END) AS print_queue,
         SUM(CASE WHEN deleted_at IS NULL AND kind = 'purchase' AND status = 'active' THEN 1 ELSE 0 END) AS purchase,
         SUM(CASE WHEN deleted_at IS NULL AND status = 'archived' THEN 1 ELSE 0 END) AS archive,
@@ -194,6 +196,8 @@ app.get("/api/counts", async (c) => {
       todo: Number(result?.todo ?? 0),
       today: Number(result?.today ?? 0),
       notes: Number(result?.notes ?? 0),
+      modeling: Number(result?.modeling ?? 0),
+      question: Number(result?.question ?? 0),
       printQueue: Number(result?.print_queue ?? 0),
       purchase: Number(result?.purchase ?? 0),
       archive: Number(result?.archive ?? 0),
@@ -287,6 +291,7 @@ app.post("/api/projects", async (c) => {
     )
     .run();
 
+  c.executionCtx.waitUntil(broadcastRealtime(c.env, { type: "project_changed" }));
   return c.json({ project }, 201);
 });
 
@@ -372,6 +377,7 @@ app.patch("/api/projects/:id", async (c) => {
     .bind(projectId)
     .first();
 
+  c.executionCtx.waitUntil(broadcastRealtime(c.env, { type: "project_changed" }));
   return c.json({ project });
 });
 
@@ -396,6 +402,7 @@ app.delete("/api/projects/:id", async (c) => {
     return c.json({ error: "not_found" }, 404);
   }
 
+  c.executionCtx.waitUntil(broadcastRealtime(c.env, { type: "project_changed" }));
   return c.json({ ok: true });
 });
 
@@ -477,7 +484,6 @@ app.get("/api/items", async (c) => {
     FROM items
     WHERE ${conditions.join("\n      AND ")}
     ${orderBy}
-    LIMIT 100
   `);
 
   const result =
@@ -511,12 +517,17 @@ app.get("/api/trash", async (c) => {
     FROM items
     WHERE deleted_at IS NOT NULL
     ORDER BY deleted_at DESC
-    LIMIT 100
   `).all();
 
   return c.json({
     items: result.results,
   });
+});
+
+app.delete("/api/trash", async (c) => {
+  const result = await c.env.DB.prepare("DELETE FROM items WHERE deleted_at IS NOT NULL").run();
+  c.executionCtx.waitUntil(broadcastRealtime(c.env, { type: "trash_emptied" }));
+  return c.json({ ok: true, deleted: Number(result.meta.changes ?? 0) });
 });
 
 app.post("/api/items", async (c) => {

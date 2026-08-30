@@ -62,6 +62,12 @@ const columns: Array<{ key: EditableProperty; label: string }> = [
   { key: "note", label: "비고" },
 ];
 
+const numberFormatter = new Intl.NumberFormat("ko-KR");
+
+function getHttpUrl(value: string) {
+  try { const url = new URL(value); return url.protocol === "http:" || url.protocol === "https:" ? url.href : null; } catch { return null; }
+}
+
 function readProperties(item: Item): PrintJobProperties {
   try {
     const parsed: unknown = JSON.parse(item.properties_json);
@@ -73,35 +79,20 @@ function readProperties(item: Item): PrintJobProperties {
   }
 }
 
-function displayValue(
-  properties: PrintJobProperties,
-  key: EditableProperty,
-  _item: Item,
-) {
-  if (key === "queue_status") {
-    return queueStatusOptions.find(
-      (option) => option.value === properties.queue_status,
-    )?.label ?? properties.queue_status ?? "\uBBF8\uC0C1";
-  }
-
+function displayValue(properties: PrintJobProperties, key: EditableProperty, _item: Item) {
+  if (key === "queue_status") return queueStatusOptions.find((option) => option.value === properties.queue_status)?.label ?? properties.queue_status ?? "미상";
   const value = properties[key];
-  return key === "colors" && Array.isArray(value)
-    ? value.join(", ")
-    : value === undefined || value === null
-      ? ""
-      : String(value);
+  if (key === "colors" && Array.isArray(value)) return value.join(", ");
+  if (key === "grams" && typeof value === "number") return `${numberFormatter.format(value)}g`;
+  if (key === "price" && typeof value === "number") return `${numberFormatter.format(value)}원`;
+  return value === undefined || value === null ? "" : String(value);
 }
 
-function editValue(
-  properties: PrintJobProperties,
-  key: EditableProperty,
-  item: Item,
-) {
-  if (key === "queue_status") {
-    return properties.queue_status ?? "";
-  }
-
-  return displayValue(properties, key, item);
+function editValue(properties: PrintJobProperties, key: EditableProperty, _item: Item) {
+  if (key === "queue_status") return properties.queue_status ?? "";
+  const value = properties[key];
+  if (key === "colors" && Array.isArray(value)) return value.join(", ");
+  return value === undefined || value === null ? "" : String(value);
 }
 
 function propertyValue(key: EditableProperty, value: string): unknown {
@@ -110,7 +101,8 @@ function propertyValue(key: EditableProperty, value: string): unknown {
   }
 
   if (key === "grams" || key === "price") {
-    return value.trim() ? Number(value) : undefined;
+    const normalized = value.replaceAll(",", "").trim();
+    return normalized ? Number(normalized) : undefined;
   }
 
   if (key === "queue_status") {
@@ -209,6 +201,7 @@ export function PrintQueueView({
   const [pendingRowActions, setPendingRowActions] = useState<string[]>([]);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const [dragOffsetY, setDragOffsetY] = useState(0);
   const [isReordering, setIsReordering] = useState(false);
   const savingCellRef = useRef<string | null>(null);
   const skipNextBlurRef = useRef(false);
@@ -260,9 +253,9 @@ export function PrintQueueView({
     if (
       (key === "grams" || key === "price") &&
       nextValue !== undefined &&
-      Number.isNaN(nextValue)
+      (Number.isNaN(nextValue) || (typeof nextValue === "number" && nextValue < 0))
     ) {
-      setSaveError("숫자를 입력해 주세요.");
+      setSaveError("0 이상의 숫자를 입력해 주세요.");
       return;
     }
 
@@ -406,6 +399,7 @@ export function PrintQueueView({
     dropIndexRef.current = null;
     setDraggedItemId(null);
     setDropIndex(null);
+    setDragOffsetY(0);
   };
 
   const handleOrderPointerDown = (
@@ -426,6 +420,7 @@ export function PrintQueueView({
     dropIndexRef.current = index;
     setDraggedItemId(item.id);
     setDropIndex(index);
+    setDragOffsetY(0);
   };
 
   const handleOrderPointerMove = (
@@ -444,6 +439,7 @@ export function PrintQueueView({
     }
 
     event.preventDefault();
+    setDragOffsetY(event.clientY - dragState.startY);
     const rows = Array.from(
       document.querySelectorAll<HTMLTableRowElement>(
         ".print-queue-table tbody tr",
@@ -566,15 +562,14 @@ export function PrintQueueView({
           </div>
           <p>출력 작업의 정보를 한눈에 관리합니다.</p>
         </div>
-        <button
-          className="print-queue-add"
-          type="button"
-          onClick={onCreate}
-          disabled={isCreating}
-        >
-          {isCreating ? "추가 중..." : "+ 작업 추가"}
-        </button>
-        {isFetching && <span className="view-status">동기화 중</span>}
+        <div className="print-queue-toolbar">
+          <button className="print-queue-add" type="button" onClick={onCreate} disabled={isCreating}>
+            {isCreating ? "추가 중..." : "+ 작업 추가"}
+          </button>
+          <span className={`sync-status${isFetching ? "" : " is-idle"}`} role={isFetching ? "status" : undefined} aria-hidden={!isFetching}>
+            <span className="sync-dot" aria-hidden="true" /><span className="sync-label">동기화 중</span>
+          </span>
+        </div>
       </div>
 
       {deleteError && <p className="inline-error">삭제하지 못했습니다.</p>}
@@ -621,7 +616,7 @@ export function PrintQueueView({
                   .join(" ");
 
                 return (
-                  <tr className={rowClassName || undefined} key={item.id}>
+                  <tr className={rowClassName || undefined} key={item.id} style={draggedItemId === item.id ? { transform: `translateY(${dragOffsetY}px)` } : undefined}>
                     <td
                       aria-label={`${index + 1}번 작업 순서 변경`}
                       className="print-queue-order-handle"
@@ -792,14 +787,19 @@ export function PrintQueueView({
                                 disabled={cellSaving}
                               >취소</button>
                             </div>
-                          ) : (
-                            <button
-                              className="print-queue-cell-button"
-                              type="button"
-                              onClick={() => startEditing(cellKey, editableValue)}
-                            >
-                              {value || "—"}
+                          ) : column.key === "colors" ? (
+                            <button className="print-queue-cell-button print-queue-color-button" type="button" onClick={() => startEditing(cellKey, editableValue)}>
+                              {Array.isArray(properties.colors) && properties.colors.length > 0 ? (
+                                <span className="print-queue-color-chips">{properties.colors.map((color) => <span className="print-queue-color-chip" key={color}><span className="print-queue-color-swatch" style={{ backgroundColor: color }} aria-hidden="true"/><span>{color}</span></span>)}</span>
+                              ) : "—"}
                             </button>
+                          ) : column.key === "model_url" ? (
+                            <div className="print-queue-model-link">
+                              {value ? (getHttpUrl(value) ? <a href={getHttpUrl(value) ?? undefined} target="_blank" rel="noreferrer">모델 열기</a> : <span className="print-queue-model-link__invalid">{value}</span>) : <span>—</span>}
+                              <button type="button" onClick={() => startEditing(cellKey, editableValue)}>수정</button>
+                            </div>
+                          ) : (
+                            <button className="print-queue-cell-button" type="button" onClick={() => startEditing(cellKey, editableValue)}>{value || "—"}</button>
                           )}
                         </td>
                       );

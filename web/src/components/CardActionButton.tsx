@@ -5,6 +5,8 @@ type CardActionButtonProps = {
   "aria-label": string;
   disabled?: boolean;
   onClick: () => void | Promise<unknown>;
+  onTriggered?: () => void;
+  menuLabel?: string;
   children: ReactNode;
 };
 
@@ -13,12 +15,15 @@ export function CardActionButton({
   "aria-label": label,
   disabled = false,
   onClick,
+  onTriggered,
+  menuLabel,
   children,
 }: CardActionButtonProps) {
   const [isPending, setIsPending] = useState(false);
 
   const handleClick = async (event: MouseEvent<HTMLButtonElement>) => {
     event.currentTarget.blur();
+    onTriggered?.();
     setIsPending(true);
 
     try {
@@ -41,6 +46,7 @@ export function CardActionButton({
       onClick={handleClick}
     >
       {isPending ? <span className="card-action-spinner" aria-hidden="true" /> : children}
+      {menuLabel && <span className="note-card__action-label">{menuLabel}</span>}
     </button>
   );
 }

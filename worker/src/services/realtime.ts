@@ -4,7 +4,9 @@ export type RealtimeEvent =
   | { type: "item_created"; item_id: string }
   | { type: "item_updated"; item_id: string }
   | { type: "item_deleted"; item_id: string }
-  | { type: "item_restored"; item_id: string };
+  | { type: "item_restored"; item_id: string }
+  | { type: "trash_emptied" }
+  | { type: "project_changed" };
 
 type RealtimeEnvironment = {
   REALTIME_HUB: DurableObjectNamespace;

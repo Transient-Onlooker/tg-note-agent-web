@@ -64,6 +64,8 @@ export type ItemCounts = {
   todo: number;
   today: number;
   notes: number;
+  modeling: number;
+  question: number;
   printQueue: number;
   purchase: number;
   archive: number;
@@ -158,6 +160,13 @@ export async function listTrash(): Promise<Item[]> {
 
   const data: { items: Item[] } = await response.json();
   return data.items;
+}
+
+export async function emptyTrash(): Promise<number> {
+  const response = await authenticatedFetch(`${API_BASE_URL}/api/trash`, { method: "DELETE" });
+  if (!response.ok) throw new Error(`Failed to empty trash: ${response.status}`);
+  const data: { deleted: number } = await response.json();
+  return data.deleted;
 }
 
 export async function createItem(body: string): Promise<void> {
