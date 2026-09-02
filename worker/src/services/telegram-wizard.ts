@@ -8,6 +8,11 @@ export type PrintWizardSession = {
   sourceMessageId: number;
   step: number;
   values: PrintWizardValues;
+  createdAt: number;
+  updatedAt: number;
+  expiresAt: number;
+  lastPromptMessageId?: number;
+  lastReplyMessageId?: number;
   lastCallbackId?: string;
   lastCallbackMessageId?: number;
   lastCallbackAction?: string;
@@ -27,17 +32,33 @@ export const printWizardFields = [
 ] as const;
 
 const storageKey = "session";
+const sessionTtlMs = 20 * 60 * 1000;
 type StartRequest = Pick<PrintWizardSession, "chatId" | "userId" | "sourceMessageId">;
 type NextRequest = {
   value?: string;
+  replyMessageId?: number;
   callbackId?: string;
   callbackMessageId?: number;
   callbackAction?: string;
 };
+type PromptRequest = {
+  messageId?: number;
+  expectedStep?: number;
+};
 
 export class TelegramPrintWizard extends DurableObject<Record<string, never>> {
   private async getSession() {
-    return this.ctx.storage.get<PrintWizardSession>(storageKey);
+    const session = await this.ctx.storage.get<PrintWizardSession>(storageKey);
+    if (!session) return null;
+    if (typeof session.expiresAt !== "number" || session.expiresAt <= Date.now()) {
+      await this.ctx.storage.delete(storageKey);
+      return null;
+    }
+    return session;
+  }
+
+  private getExpiration() {
+    return Date.now() + sessionTtlMs;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -49,22 +70,45 @@ export class TelegramPrintWizard extends DurableObject<Record<string, never>> {
 
     if (request.method === "POST" && url.pathname === "/start") {
       const payload = await request.json<StartRequest>();
+      const now = Date.now();
       const session: PrintWizardSession = {
         chatId: payload.chatId,
         userId: payload.userId,
         sourceMessageId: payload.sourceMessageId,
         step: 0,
         values: {},
+        createdAt: now,
+        updatedAt: now,
+        expiresAt: now + sessionTtlMs,
       };
       await this.ctx.storage.put(storageKey, session);
       return Response.json({ session });
+    }
+
+    if (request.method === "POST" && url.pathname === "/prompt") {
+      const session = await this.getSession();
+      if (!session) return Response.json({ error: "not_found" }, { status: 404 });
+      const payload = await request.json<PromptRequest>();
+      if (typeof payload.messageId !== "number") return Response.json({ error: "message_id_required" }, { status: 400 });
+      if (payload.expectedStep !== undefined && payload.expectedStep !== session.step) {
+        return Response.json({ session, stale: true });
+      }
+      const nextSession: PrintWizardSession = {
+        ...session,
+        lastPromptMessageId: payload.messageId,
+        updatedAt: Date.now(),
+        expiresAt: this.getExpiration(),
+      };
+      await this.ctx.storage.put(storageKey, nextSession);
+      return Response.json({ session: nextSession });
     }
 
     if (request.method === "POST" && url.pathname === "/next") {
       const session = await this.getSession();
       if (!session) return Response.json({ error: "not_found" }, { status: 404 });
       const payload = await request.json<NextRequest>();
-      if ((payload.callbackId && session.lastCallbackId === payload.callbackId) ||
+      if ((payload.replyMessageId !== undefined && session.lastReplyMessageId === payload.replyMessageId) ||
+        (payload.callbackId && session.lastCallbackId === payload.callbackId) ||
         (payload.callbackMessageId !== undefined &&
           payload.callbackAction !== undefined &&
           payload.callbackMessageId === session.lastCallbackMessageId &&
@@ -81,9 +125,13 @@ export class TelegramPrintWizard extends DurableObject<Record<string, never>> {
         ...session,
         step: session.step + 1,
         values: { ...session.values, [field.key]: value },
+        lastPromptMessageId: undefined,
+        ...(payload.replyMessageId !== undefined ? { lastReplyMessageId: payload.replyMessageId } : {}),
         ...(payload.callbackId ? { lastCallbackId: payload.callbackId } : {}),
-        ...(payload.callbackMessageId ? { lastCallbackMessageId: payload.callbackMessageId } : {}),
+        ...(payload.callbackMessageId !== undefined ? { lastCallbackMessageId: payload.callbackMessageId } : {}),
         ...(payload.callbackAction ? { lastCallbackAction: payload.callbackAction } : {}),
+        updatedAt: Date.now(),
+        expiresAt: this.getExpiration(),
       };
       await this.ctx.storage.put(storageKey, nextSession);
       return Response.json({ session: nextSession, duplicate: false });
@@ -103,15 +151,10 @@ export class TelegramPrintWizard extends DurableObject<Record<string, never>> {
       if (session.step < printWizardFields.length) {
         return Response.json({ error: "incomplete" }, { status: 409 });
       }
-      const nextSession: PrintWizardSession = {
-        ...session,
-        ...(payload.callbackId ? { lastCallbackId: payload.callbackId } : {}),
-        ...(payload.callbackMessageId ? { lastCallbackMessageId: payload.callbackMessageId } : {}),
-        ...(payload.callbackAction ? { lastCallbackAction: payload.callbackAction } : {}),
-      };
-      await this.ctx.storage.put(storageKey, nextSession);
-      return Response.json({ session: nextSession, duplicate: false });
+      await this.ctx.storage.delete(storageKey);
+      return Response.json({ session, duplicate: false });
     }
+
     if (request.method === "DELETE" && url.pathname === "/session") {
       await this.ctx.storage.delete(storageKey);
       return Response.json({ ok: true });
