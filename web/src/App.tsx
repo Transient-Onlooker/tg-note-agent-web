@@ -906,8 +906,14 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   ) ?? [];
   const todoCount = todoQuery.isSuccess ? todoQuery.data.length : null;
   const todoItems = todoQuery.data ? sortTodoItems(todoQuery.data) : [];
-  const todoTodayItems = todoItems.filter((item) => item.due_at !== null && item.due_at >= todayRange.dueFrom && item.due_at < todayRange.dueTo);
-  const todoRemainingItems = todoItems.filter((item) => !todoTodayItems.some((todayItem) => todayItem.id === item.id));
+  const tomorrowStart = todayRange.dueTo;
+  const tomorrowEndDate = new Date(tomorrowStart);
+  tomorrowEndDate.setDate(tomorrowEndDate.getDate() + 1);
+  const tomorrowEnd = tomorrowEndDate.toISOString();
+  const todoTodayItems = todoItems.filter((item) => item.due_at !== null && item.due_at < todayRange.dueTo);
+  const todoTomorrowItems = todoItems.filter((item) => item.due_at !== null && item.due_at >= tomorrowStart && item.due_at < tomorrowEnd);
+  const todoLaterItems = todoItems.filter((item) => item.due_at !== null && item.due_at >= tomorrowEnd);
+  const todoUnscheduledItems = todoItems.filter((item) => item.due_at === null);
   const archiveCount = archiveQuery.isSuccess ? archiveQuery.data.length : null;
   const activeNavigationItem =
     navigationGroups
@@ -1112,6 +1118,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     onDeleteRequest: openDeleteConfirmation,
     projects: projectOptions,
     onProjectChange: changeItemProject,
+    onProjectCreate: (name: string) => createProjectMutation.mutateAsync(name),
   };
 
   const activeViewCount = (() => {
@@ -1243,9 +1250,13 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             viewDescription="아직 처리해야 할 Todo를 기한 순서로 확인합니다."
             emptyDescription="오늘로 지정하거나 Task로 분류한 메모가 여기에 표시됩니다."
             showCreatedAt={false}
-            items={todoRemainingItems}
-            overdueItems={todoTodayItems}
-            sectionTitles={{ featured: "오늘 마감", remaining: "그 외 Todo" }}
+            items={[]}
+            sectionedItems={[
+              { title: "오늘 마감", items: todoTodayItems },
+              { title: "내일 마감", items: todoTomorrowItems },
+              { title: "이후 마감", items: todoLaterItems },
+              { title: "날짜 미정", items: todoUnscheduledItems },
+            ]}
             notesCount={todoCount}
             isPending={todoQuery.isPending}
             isError={todoQuery.isError}

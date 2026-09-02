@@ -68,20 +68,31 @@ const columns: Array<{ key: EditableProperty; label: string }> = [
 const numberFormatter = new Intl.NumberFormat("ko-KR");
 
 function getColorSwatch(color: string) {
-  const normalized = color.trim().toLowerCase();
-  const named: Record<string, string> = {
-    red: "#dc4b4b", "빨강": "#dc4b4b", "빨간색": "#dc4b4b",
-    black: "#242424", "검정": "#242424", "검은색": "#242424",
-    white: "#f7f7f4", "흰색": "#f7f7f4", "화이트": "#f7f7f4",
-    mint: "#55bfa8", "민트": "#55bfa8",
-    blue: "#4d7fd8", "파랑": "#4d7fd8", "파란색": "#4d7fd8",
-    yellow: "#e5bc3f", "노랑": "#e5bc3f", "노란색": "#e5bc3f",
-    green: "#53a45d", "초록": "#53a45d", "초록색": "#53a45d",
-    orange: "#db8c3b", "주황": "#db8c3b", "주황색": "#db8c3b",
-  };
-  return named[normalized] ?? color;
+  const normalized = color.trim().toLowerCase().replaceAll(" ", "");
+  const named: Array<[string[], string]> = [
+    [["red", "\ube68\uac15", "\ube68\uac04\uc0c9", "\ub808\ub4dc"], "#dc4b4b"],
+    [["black", "\uac80\uc815", "\uac80\uc740\uc0c9", "\ube14\ub799"], "#242424"],
+    [["white", "\ud770\uc0c9", "\ud654\uc774\ud2b8"], "#f7f7f4"],
+    [["mint", "\ubbfc\ud2b8"], "#55bfa8"],
+    [["blue", "\ud30c\ub791", "\ud30c\ub780\uc0c9", "\ube14\ub8e8", "\ub0a8\uc0c9", "\ub124\uc774\ube44"], "#4d7fd8"],
+    [["yellow", "\ub178\ub791", "\ub178\ub780\uc0c9", "\uc610\ub85c"], "#e5bc3f"],
+    [["green", "\ucd08\ub85d", "\ucd08\ub85d\uc0c9", "\uadf8\ub9b0"], "#53a45d"],
+    [["orange", "\uc8fc\ud669", "\uc8fc\ud669\uc0c9", "\uc624\ub80c\uc9c0"], "#db8c3b"],
+    [["gray", "grey", "\ud68c\uc0c9", "\uadf8\ub808\uc774", "silver", "\uc2e4\ubc84"], "#8d9198"],
+    [["purple", "\ubcf4\ub77c", "\ubcf4\ub77c\uc0c9", "\ud37c\ud50c"], "#8b6cc7"],
+    [["pink", "\ubd84\ud64d", "\ud551\ud06c"], "#dd779b"],
+    [["brown", "\uac08\uc0c9", "\ube0c\ub77c\uc6b4"], "#9a704d"],
+    [["beige", "\ubca0\uc774\uc9c0"], "#c7ae84"],
+  ];
+  const namedColor = named.find(([aliases]) => aliases.some((alias) => normalized.includes(alias)))?.[1];
+  if (namedColor) return namedColor;
+  return CSS.supports("color", color) ? color : "#b2b2ad";
 }
 
+function getColorValues(value: unknown) {
+  const source = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  return source.flatMap((color) => String(color).split(/[,/|]/)).map((color) => color.trim()).filter(Boolean);
+}
 function getHttpUrl(value: string) {
   try { const url = new URL(value); return url.protocol === "http:" || url.protocol === "https:" ? url.href : null; } catch { return null; }
 }
@@ -100,7 +111,7 @@ function readProperties(item: Item): PrintJobProperties {
 function displayValue(properties: PrintJobProperties, key: EditableProperty, _item: Item) {
   if (key === "queue_status") return queueStatusOptions.find((option) => option.value === properties.queue_status)?.label ?? properties.queue_status ?? "미상";
   const value = properties[key];
-  if (key === "colors" && Array.isArray(value)) return value.join(", ");
+  if (key === "colors") return getColorValues(value).join(", ");
   if (key === "grams" && typeof value === "number") return `${numberFormatter.format(value)}g`;
   if (key === "price" && typeof value === "number") return `${numberFormatter.format(value)}원`;
   return value === undefined || value === null ? "" : String(value);
@@ -109,7 +120,7 @@ function displayValue(properties: PrintJobProperties, key: EditableProperty, _it
 function editValue(properties: PrintJobProperties, key: EditableProperty, _item: Item) {
   if (key === "queue_status") return properties.queue_status ?? "";
   const value = properties[key];
-  if (key === "colors" && Array.isArray(value)) return value.join(", ");
+  if (key === "colors") return getColorValues(value).join(", ");
   return value === undefined || value === null ? "" : String(value);
 }
 
@@ -223,6 +234,7 @@ export function PrintQueueView({
   const [dragRowHeight, setDragRowHeight] = useState(0);
   const [isReordering, setIsReordering] = useState(false);
   const saveQueuesRef = useRef(new Map<string, Promise<void>>());
+  const workingItemsRef = useRef(new Map<string, Item>());
   const skipNextBlurRef = useRef(false);
   const dragStateRef = useRef<DragState | null>(null);
   const dragMovedRef = useRef(false);
@@ -244,29 +256,38 @@ export function PrintQueueView({
     setSaveError(null);
   };
 
-  const enqueueSave = (itemId: string, cellKey: string, input: UpdateItemInput) => {
-    const previous = saveQueuesRef.current.get(itemId) ?? Promise.resolve();
-    const task = previous
-      .catch(() => undefined)
-      .then(async () => {
-        setSavingCell(cellKey);
-        try {
-          await onUpdateItem(itemId, input);
-        } catch {
-          setSaveError("수정하지 못했습니다.");
-        } finally {
-          setSavingCell((current) => current === cellKey ? null : current);
-        }
-      });
-
-    saveQueuesRef.current.set(itemId, task);
+  const enqueueSave = (
+    item: Item,
+    cellKey: string,
+    createInput: (current: Item) => UpdateItemInput | null,
+  ) => {
+    const previous = saveQueuesRef.current.get(item.id) ?? Promise.resolve();
+    const task = previous.catch(() => undefined).then(async () => {
+      const current = workingItemsRef.current.get(item.id) ?? item;
+      const input = createInput(current);
+      if (!input) return;
+      const rollbackItem = current;
+      const optimisticItem = { ...current, ...input, updated_at: new Date().toISOString(), version: current.version + 1 } as Item;
+      workingItemsRef.current.set(item.id, optimisticItem);
+      setSavingCell(cellKey);
+      try {
+        const updatedItem = await onUpdateItem(item.id, input);
+        workingItemsRef.current.set(item.id, updatedItem);
+      } catch {
+        workingItemsRef.current.set(item.id, rollbackItem);
+        setSaveError("\uc218\uc815\ud558\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4.");
+      } finally {
+        setSavingCell((currentCell) => currentCell === cellKey ? null : currentCell);
+      }
+    });
+    saveQueuesRef.current.set(item.id, task);
     void task.finally(() => {
-      if (saveQueuesRef.current.get(itemId) === task) {
-        saveQueuesRef.current.delete(itemId);
+      if (saveQueuesRef.current.get(item.id) === task) {
+        saveQueuesRef.current.delete(item.id);
+        workingItemsRef.current.delete(item.id);
       }
     });
   };
-
   const startEditing = (cell: string, value: string) => {
     if (isReordering) return;
     setEditingCell(cell);
@@ -275,63 +296,41 @@ export function PrintQueueView({
   };
 
   const saveProperty = (item: Item, key: EditableProperty, afterSave?: () => void) => {
-    const properties = readProperties(item);
-    const nextValue = propertyValue(key, draft);
-
-    if (
-      (key === "grams" || key === "price") &&
-      nextValue !== undefined &&
-      (Number.isNaN(nextValue) || (typeof nextValue === "number" && nextValue < 0))
-    ) {
-      setSaveError("0 이상의 숫자를 입력해 주세요.");
+    const draftValue = draft;
+    const nextValue = propertyValue(key, draftValue);
+    if ((key === "grams" || key === "price") && nextValue !== undefined && (Number.isNaN(nextValue) || (typeof nextValue === "number" && nextValue < 0))) {
+      setSaveError("0 \uc774\uc0c1\uc758 \uc22b\uc790\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.");
       return;
     }
-
-    const nextProperties = { ...properties };
-    if (nextValue === undefined) delete nextProperties[key];
-    else nextProperties[key] = nextValue as never;
-
-    if (JSON.stringify(nextProperties) === JSON.stringify(properties)) {
-      cancelEditing();
-      afterSave?.();
-      return;
-    }
-
     cancelEditing();
     afterSave?.();
-    enqueueSave(item.id, `${item.id}:${key}`, { properties_json: JSON.stringify(nextProperties) });
+    enqueueSave(item, `${item.id}:${key}`, (current) => {
+      const properties = readProperties(current);
+      const value = propertyValue(key, draftValue);
+      const nextProperties = { ...properties };
+      if (value === undefined) delete nextProperties[key];
+      else nextProperties[key] = value as never;
+      return JSON.stringify(nextProperties) === JSON.stringify(properties) ? null : { properties_json: JSON.stringify(nextProperties) };
+    });
   };
 
   const saveOutput = (item: Item, afterSave?: () => void) => {
     const nextValue = draft.trim();
     if (!nextValue) {
-      setSaveError("출력물을 입력해 주세요.");
+      setSaveError("\ucd9c\ub825\ubb3c\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694.");
       return;
     }
-    if (nextValue === item.body) {
-      cancelEditing();
-      afterSave?.();
-      return;
-    }
-
     cancelEditing();
     afterSave?.();
-    enqueueSave(item.id, `${item.id}:output`, { body: nextValue });
+    enqueueSave(item, `${item.id}:output`, (current) => current.body === nextValue ? null : { body: nextValue });
   };
 
   const saveDueDate = (item: Item, afterSave?: () => void) => {
     const nextValue = draft;
-    if (nextValue === editDueDate(item.due_at)) {
-      cancelEditing();
-      afterSave?.();
-      return;
-    }
-
     cancelEditing();
     afterSave?.();
-    enqueueSave(item.id, item.id + ":due_at", { due_at: nextValue || null });
+    enqueueSave(item, `${item.id}:due_at`, (current) => editDueDate(current.due_at) === nextValue ? null : { due_at: nextValue || null });
   };
-
   const runRowAction = async (
     item: Item,
     action: "inbox" | "archive",
@@ -812,8 +811,8 @@ export function PrintQueueView({
                             </div>
                           ) : column.key === "colors" ? (
                             <button className="print-queue-cell-button print-queue-color-button" type="button" onClick={() => startEditing(cellKey, editableValue)}>
-                              {Array.isArray(properties.colors) && properties.colors.length > 0 ? (
-                                <span className="print-queue-color-chips">{properties.colors.map((color) => <span className="print-queue-color-chip" key={color}><span className="print-queue-color-swatch" style={{ backgroundColor: getColorSwatch(color) }} aria-hidden="true"/><span>{color}</span></span>)}</span>
+                              {getColorValues(properties.colors).length > 0 ? (
+                                <span className="print-queue-color-chips">{getColorValues(properties.colors).map((color) => <span className="print-queue-color-chip" key={color}><span className="print-queue-color-swatch" style={{ backgroundColor: getColorSwatch(color) }} aria-hidden="true"/><span>{color}</span></span>)}</span>
                               ) : "—"}
                             </button>
                           ) : column.key === "model_url" ? (

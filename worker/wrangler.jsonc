@@ -18,12 +18,20 @@
       {
         "name": "REALTIME_HUB",
         "class_name": "RealtimeHub"
+      },
+      {
+        "name": "TELEGRAM_PRINT_WIZARD",
+        "class_name": "TelegramPrintWizard"
       }
     ]
   },
 
   "exports": {
     "RealtimeHub": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    },
+    "TelegramPrintWizard": {
       "type": "durable-object",
       "storage": "sqlite"
     }

@@ -9,6 +9,7 @@ import {
 } from "./services/realtime";
 
 export { RealtimeHub } from "./services/realtime";
+export { TelegramPrintWizard } from "./services/telegram-wizard";
 
 type Bindings = {
   DB: D1Database;
@@ -17,6 +18,7 @@ type Bindings = {
   TELEGRAM_ALLOWED_USER_ID: string;
   WEB_API_TOKEN: string;
   REALTIME_HUB: DurableObjectNamespace;
+  TELEGRAM_PRINT_WIZARD: DurableObjectNamespace;
 };
 
 type CreateItemRequest = {

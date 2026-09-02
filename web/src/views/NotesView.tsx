@@ -22,6 +22,7 @@ type NotesViewProps = {
   onProjectCreate?: (name: string) => Promise<ProjectOption>;
   renderItemDetails?: (item: Item) => ReactNode; renderEditorDetails?: (item: Item) => ReactNode; renderBeforeList?: ReactNode;
   sectionTitles?: { featured: string; remaining: string };
+  sectionedItems?: Array<{ title: string; items: Item[] }> ;
 };
 
 export function NotesView({
@@ -31,18 +32,27 @@ export function NotesView({
   onRetry, onStartEditing, onEditDraftChange, onEditDueChange, onCancelEditing, onSaveEditing, onMoveToNotes,
   onMoveToTodo, onMoveToInbox, onArchive, onPurchase, onDeleteRequest, onSendToPrintQueue, onMoveToModeling,
   onMoveToQuestion, onSetToday, onClearDue, projects = [], onProjectChange, onProjectCreate, renderItemDetails, renderEditorDetails,
-  renderBeforeList, sectionTitles, showDueControls = true, showTodayAction = true, showCreatedAt = false,
+  renderBeforeList, sectionTitles, sectionedItems, showDueControls = true, showTodayAction = true, showCreatedAt = false,
 }: NotesViewProps) {
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
   useEffect(() => setOpenActionMenuId(null), [editingItemId]);
-  const overdueItemIds = new Set(overdueItems?.map((item) => item.id));
-  const displayItems = overdueItems ? [...overdueItems, ...items] : items;
+  const displayItems = sectionedItems
+    ? sectionedItems.flatMap((section) => section.items)
+    : overdueItems ? [...overdueItems, ...items] : items;
   const overdueCount = overdueItems?.length ?? 0;
+  const sectionStarts = new Map<number, { title: string; count: number }>();
+  let sectionOffset = 0;
+  sectionedItems?.forEach((section) => {
+    if (section.items.length > 0) {
+      sectionStarts.set(sectionOffset, { title: section.title, count: section.items.length });
+    }
+    sectionOffset += section.items.length;
+  });
 
   const getActions = (item: Item): CardAction[] => {
     const actions: CardAction[] = [];
     const referenceType = getReferenceType(item);
-    const canSetToday = Boolean(showTodayAction && onSetToday && (!overdueItems || overdueItemIds.has(item.id)));
+    const canSetToday = Boolean(showTodayAction && onSetToday);
     if (onMoveToInbox && item.kind !== "inbox") actions.push({ key:"inbox", className:"note-card__inbox", label:"Inbox로 이동", icon:<Icon name="inbox" size={17}/>, onClick:()=>onMoveToInbox(item), inline:true, menuCore:true });
     if (onMoveToTodo && item.kind !== "task") actions.push({ key:"todo", className:"note-card__todo", label:"Todo로 이동", icon:<Icon name="todo" size={17}/>, onClick:()=>onMoveToTodo(item), inline:true, menuCore:true });
     if (canSetToday && onSetToday) actions.push({ key:"today", className:"note-card__today", label:"오늘로 지정", icon:<Icon name="today" size={17}/>, onClick:()=>onSetToday(item), inline:true, menuCore:true });
@@ -53,7 +63,7 @@ export function NotesView({
     if (onSendToPrintQueue && item.kind !== "print_job") actions.push({ key:"print", className:"note-card__print-queue", label:"Print Queue로 이동", icon:<Icon name="print-queue" size={17}/>, onClick:()=>onSendToPrintQueue(item) });
     if (onPurchase && item.kind !== "purchase") actions.push({ key:"purchase", className:"note-card__purchase", label:"Purchase로 이동", icon:<Icon name="purchase" size={17}/>, onClick:()=>onPurchase(item) });
     if (showDueControls && onClearDue && item.due_at !== null) actions.push({ key:"clear-due", className:"note-card__today note-card__today-clear", label:"기한 제거", icon:<Icon name="close" size={17}/>, onClick:()=>onClearDue(item) });
-    actions.push({ key:"archive", className:"note-card__archive", label:"Archive로 이동", icon:<Icon name="archive" size={17}/>, onClick:()=>onArchive(item) });
+    actions.push({ key:"archive", className:"note-card__archive", label:"Archive로 이동", icon:<Icon name="archive" size={17}/>, onClick:()=>onArchive(item), inline:true, menuCore:true });
     actions.push({ key:"delete", className:"note-card__delete", label:"삭제", icon:<Icon name="delete" size={17}/>, onClick:()=>onDeleteRequest(item) });
     return actions;
   };
@@ -68,8 +78,9 @@ export function NotesView({
       {isError && <div className="state-panel state-panel--error" role="alert"><span className="state-panel__icon"><Icon name="refresh" size={22}/></span><div><h3>{errorTitle ?? `${viewTitle}를 불러오지 못했습니다.`}</h3><p>Worker 연결 상태를 확인한 뒤 다시 시도해 주세요.</p></div><button type="button" onClick={onRetry}>다시 시도</button></div>}
       {isSuccess && displayItems.length===0 && <div className="state-panel state-panel--empty"><span className="state-panel__icon"><Icon name="notes" size={24}/></span><div><h3>{emptyTitle ?? `${viewTitle}가 비어 있습니다.`}</h3><p>{emptyDescription}</p></div></div>}
       {isSuccess && displayItems.map((item,index)=><Fragment key={item.id}>
-        {overdueCount>0 && index===0 && <div className="today-section-heading"><h3>{sectionTitles?.featured ?? "기한 지남"}</h3><span>{overdueCount}개</span></div>}
-        {overdueCount>0 && index===overdueCount && <div className="today-section-heading"><h3>{sectionTitles?.remaining ?? "오늘"}</h3><span>{items.length}개</span></div>}
+        {sectionStarts.get(index) && <div className="today-section-heading"><h3>{sectionStarts.get(index)?.title}</h3><span>{sectionStarts.get(index)?.count}개</span></div>}
+        {!sectionedItems && overdueCount>0 && index===0 && <div className="today-section-heading"><h3>{sectionTitles?.featured ?? "기한 지남"}</h3><span>{overdueCount}개</span></div>}
+        {!sectionedItems && overdueCount>0 && index===overdueCount && <div className="today-section-heading"><h3>{sectionTitles?.remaining ?? "오늘"}</h3><span>{items.length}개</span></div>}
         <article className={`note-card${editingItemId===item.id?" note-card--editing":""}`}>
           <span className="note-card__marker" aria-hidden="true"><Icon name="notes" size={18}/></span>
           <div className="note-card__content">
