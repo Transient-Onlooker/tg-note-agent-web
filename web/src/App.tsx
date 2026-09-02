@@ -520,7 +520,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
     onSuccess: async (_result, project) => {
       if (selectedProjectId === project.id) setSelectedProjectId(null);
       await invalidateProjectData();
-      showActionFeedback("프로젝트를 삭제했습니다. 연결된 항목은 유지됩니다.");
+      showActionFeedback("프로젝트를 삭제했습니다. 연결된 활성 항목은 Archive로 옮겼습니다.");
     },
     onError: () => showActionFeedback("프로젝트를 삭제하지 못했습니다.", "error"),
   });
@@ -906,6 +906,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   ) ?? [];
   const todoCount = todoQuery.isSuccess ? todoQuery.data.length : null;
   const todoItems = todoQuery.data ? sortTodoItems(todoQuery.data) : [];
+  const todoTodayItems = todoItems.filter((item) => item.due_at !== null && item.due_at >= todayRange.dueFrom && item.due_at < todayRange.dueTo);
+  const todoRemainingItems = todoItems.filter((item) => !todoTodayItems.some((todayItem) => todayItem.id === item.id));
   const archiveCount = archiveQuery.isSuccess ? archiveQuery.data.length : null;
   const activeNavigationItem =
     navigationGroups
@@ -1191,6 +1193,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onDeleteRequest={openDeleteConfirmation}
             projects={projectOptions}
             onProjectChange={changeItemProject}
+            onProjectCreate={(name) => createProjectMutation.mutateAsync(name)}
           />
         ) : activeView === "notes" ? (
           <NotesView
@@ -1232,6 +1235,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onDeleteRequest={openDeleteConfirmation}
             projects={projectOptions}
             onProjectChange={changeItemProject}
+            onProjectCreate={(name) => createProjectMutation.mutateAsync(name)}
           />
         ) : activeView === "todo" ? (
           <NotesView
@@ -1239,7 +1243,9 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             viewDescription="아직 처리해야 할 Todo를 기한 순서로 확인합니다."
             emptyDescription="오늘로 지정하거나 Task로 분류한 메모가 여기에 표시됩니다."
             showCreatedAt={false}
-            items={todoItems}
+            items={todoRemainingItems}
+            overdueItems={todoTodayItems}
+            sectionTitles={{ featured: "오늘 마감", remaining: "그 외 Todo" }}
             notesCount={todoCount}
             isPending={todoQuery.isPending}
             isError={todoQuery.isError}
@@ -1277,6 +1283,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onDeleteRequest={openDeleteConfirmation}
             projects={projectOptions}
             onProjectChange={changeItemProject}
+            onProjectCreate={(name) => createProjectMutation.mutateAsync(name)}
           />
         ) : activeView === "today" ? (
           <TodayView
@@ -1320,6 +1327,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onDeleteRequest={openDeleteConfirmation}
             projects={projectOptions}
             onProjectChange={changeItemProject}
+            onProjectCreate={(name) => createProjectMutation.mutateAsync(name)}
           />
         ) : activeView === "modeling" ? (
           <ReferenceView
@@ -1396,6 +1404,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             onDeleteRequest={openDeleteConfirmation}
             projects={projectOptions}
             onProjectChange={changeItemProject}
+            onProjectCreate={(name) => createProjectMutation.mutateAsync(name)}
           />
         ) : activeView === "print-queue" ? (
           <PrintQueueView

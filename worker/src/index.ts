@@ -390,6 +390,10 @@ app.delete("/api/projects/:id", async (c) => {
         UPDATE items
         SET
           project_id = NULL,
+          status = CASE
+            WHEN status = 'active' AND deleted_at IS NULL THEN 'archived'
+            ELSE status
+          END,
           updated_at = ?,
           version = version + 1
         WHERE project_id = ?

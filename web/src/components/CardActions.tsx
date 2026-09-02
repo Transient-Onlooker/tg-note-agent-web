@@ -3,6 +3,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { CardActionButton } from "./CardActionButton";
@@ -31,6 +32,7 @@ type CardActionsProps = {
   projectOptions?: ProjectOption[];
   projectId?: string | null;
   onProjectChange?: (projectId: string | null) => Promise<unknown>;
+  onProjectCreate?: (name: string) => Promise<ProjectOption>;
 };
 
 export function CardActions({
@@ -40,11 +42,16 @@ export function CardActions({
   projectOptions = [],
   projectId = null,
   onProjectChange,
+  onProjectCreate,
 }: CardActionsProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [isSavingProject, setIsSavingProject] = useState(false);
   const [opensUpward, setOpensUpward] = useState(false);
+  const [menuMaxHeight, setMenuMaxHeight] = useState(480);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [projectError, setProjectError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -70,6 +77,9 @@ export function CardActions({
   useLayoutEffect(() => {
     if (!isOpen) {
       setOpensUpward(false);
+      setIsCreatingProject(false);
+      setNewProjectName("");
+      setProjectError(null);
       return;
     }
 
@@ -77,12 +87,26 @@ export function CardActions({
     const menu = menuRef.current;
     if (!root || !menu) return;
 
-    const rootBounds = root.getBoundingClientRect();
-    const menuBounds = menu.getBoundingClientRect();
-    const availableBelow = window.innerHeight - rootBounds.bottom - 12;
-    const availableAbove = rootBounds.top - 12;
-    setOpensUpward(menuBounds.height > availableBelow && availableAbove > availableBelow);
-  }, [isOpen, actions.length, projectOptions.length]);
+    const updatePlacement = () => {
+      const rootBounds = root.getBoundingClientRect();
+      const headerBottom = document
+        .querySelector<HTMLElement>(".mobile-topbar")
+        ?.getBoundingClientRect().bottom ?? 0;
+      const safeTop = Math.max(12, headerBottom + 8);
+      const safeBottom = 16;
+      const availableBelow = Math.max(0, window.innerHeight - rootBounds.bottom - safeBottom);
+      const availableAbove = Math.max(0, rootBounds.top - safeTop);
+      const opensUp = menu.scrollHeight > availableBelow && availableAbove > availableBelow;
+      const availableHeight = opensUp ? availableAbove : availableBelow;
+
+      setOpensUpward(opensUp);
+      setMenuMaxHeight(Math.max(80, Math.min(480, availableHeight)));
+    };
+
+    updatePlacement();
+    window.addEventListener("resize", updatePlacement);
+    return () => window.removeEventListener("resize", updatePlacement);
+  }, [isOpen, actions.length, projectOptions.length, isCreatingProject]);
 
   const menuActions = actions.filter((action) => action.menu !== false);
   const regularMenuActions = menuActions.filter((action) => action.key !== "delete");
@@ -93,6 +117,7 @@ export function CardActions({
     <div
       ref={rootRef}
       className={`note-card__actions${isOpen ? " is-open" : ""}${opensUpward ? " opens-up" : ""}`}
+      style={{ "--action-menu-max-height": `${menuMaxHeight}px` } as CSSProperties}
     >
       <div className="note-card__inline-actions">
         {inlineActions.map((action) => (
@@ -138,8 +163,13 @@ export function CardActions({
             <select
               aria-label="프로젝트 지정"
               value={projectId ?? ""}
-              disabled={isSavingProject}
+              disabled={isSavingProject || isCreatingProject}
               onChange={(event) => {
+                if (event.target.value === "__create-project__") {
+                  setIsCreatingProject(true);
+                  setProjectError(null);
+                  return;
+                }
                 const nextProjectId = event.target.value || null;
                 setIsSavingProject(true);
                 void onProjectChange(nextProjectId)
@@ -151,8 +181,40 @@ export function CardActions({
               {projectOptions.map((project) => (
                 <option key={project.id} value={project.id}>{project.name}</option>
               ))}
+              {onProjectCreate && <option value="__create-project__">+ 새 프로젝트 만들기</option>}
             </select>
           </label>
+        )}
+
+        {isCreatingProject && onProjectCreate && (
+          <div className="note-card__project-create">
+            <input
+              value={newProjectName}
+              onChange={(event) => setNewProjectName(event.target.value)}
+              placeholder="새 프로젝트 이름"
+              aria-label="새 프로젝트 이름"
+              autoFocus
+            />
+            <button
+              type="button"
+              disabled={!newProjectName.trim() || isSavingProject}
+              onClick={() => {
+                const name = newProjectName.trim();
+                if (!name) return;
+                setIsSavingProject(true);
+                setProjectError(null);
+                void onProjectCreate(name)
+                  .then((project) => onProjectChange?.(project.id))
+                  .then(() => onOpenChange(false))
+                  .catch(() => setProjectError("프로젝트를 만들지 못했습니다."))
+                  .finally(() => setIsSavingProject(false));
+              }}
+            >
+              만들기
+            </button>
+            <button type="button" onClick={() => setIsCreatingProject(false)} disabled={isSavingProject}>취소</button>
+            {projectError && <p role="alert">{projectError}</p>}
+          </div>
         )}
 
         {destructiveMenuActions.map((action) => (

@@ -67,6 +67,21 @@ const columns: Array<{ key: EditableProperty; label: string }> = [
 
 const numberFormatter = new Intl.NumberFormat("ko-KR");
 
+function getColorSwatch(color: string) {
+  const normalized = color.trim().toLowerCase();
+  const named: Record<string, string> = {
+    red: "#dc4b4b", "빨강": "#dc4b4b", "빨간색": "#dc4b4b",
+    black: "#242424", "검정": "#242424", "검은색": "#242424",
+    white: "#f7f7f4", "흰색": "#f7f7f4", "화이트": "#f7f7f4",
+    mint: "#55bfa8", "민트": "#55bfa8",
+    blue: "#4d7fd8", "파랑": "#4d7fd8", "파란색": "#4d7fd8",
+    yellow: "#e5bc3f", "노랑": "#e5bc3f", "노란색": "#e5bc3f",
+    green: "#53a45d", "초록": "#53a45d", "초록색": "#53a45d",
+    orange: "#db8c3b", "주황": "#db8c3b", "주황색": "#db8c3b",
+  };
+  return named[normalized] ?? color;
+}
+
 function getHttpUrl(value: string) {
   try { const url = new URL(value); return url.protocol === "http:" || url.protocol === "https:" ? url.href : null; } catch { return null; }
 }
@@ -207,7 +222,7 @@ export function PrintQueueView({
   const [dragOffsetY, setDragOffsetY] = useState(0);
   const [dragRowHeight, setDragRowHeight] = useState(0);
   const [isReordering, setIsReordering] = useState(false);
-  const savingCellRef = useRef<string | null>(null);
+  const saveQueuesRef = useRef(new Map<string, Promise<void>>());
   const skipNextBlurRef = useRef(false);
   const dragStateRef = useRef<DragState | null>(null);
   const dragMovedRef = useRef(false);
@@ -229,29 +244,38 @@ export function PrintQueueView({
     setSaveError(null);
   };
 
+  const enqueueSave = (itemId: string, cellKey: string, input: UpdateItemInput) => {
+    const previous = saveQueuesRef.current.get(itemId) ?? Promise.resolve();
+    const task = previous
+      .catch(() => undefined)
+      .then(async () => {
+        setSavingCell(cellKey);
+        try {
+          await onUpdateItem(itemId, input);
+        } catch {
+          setSaveError("수정하지 못했습니다.");
+        } finally {
+          setSavingCell((current) => current === cellKey ? null : current);
+        }
+      });
+
+    saveQueuesRef.current.set(itemId, task);
+    void task.finally(() => {
+      if (saveQueuesRef.current.get(itemId) === task) {
+        saveQueuesRef.current.delete(itemId);
+      }
+    });
+  };
+
   const startEditing = (cell: string, value: string) => {
-    if (savingCellRef.current || isReordering) return;
+    if (isReordering) return;
     setEditingCell(cell);
     setDraft(value);
     setSaveError(null);
   };
 
-  const restoreAfterFailure = (serverValue: string) => {
-    setEditingCell(null);
-    setDraft(serverValue);
-    setSaveError("수정하지 못했습니다.");
-  };
-
-  const saveProperty = async (
-    item: Item,
-    key: EditableProperty,
-    afterSave?: () => void,
-  ) => {
-    const cellKey = `${item.id}:${key}`;
-    if (savingCellRef.current) return;
-
+  const saveProperty = (item: Item, key: EditableProperty, afterSave?: () => void) => {
     const properties = readProperties(item);
-    const originalValue = displayValue(properties, key, item);
     const nextValue = propertyValue(key, draft);
 
     if (
@@ -273,64 +297,39 @@ export function PrintQueueView({
       return;
     }
 
-    savingCellRef.current = cellKey;
-    setSavingCell(cellKey);
-    try {
-      await onUpdateItem(item.id, {
-        properties_json: JSON.stringify(nextProperties),
-      });
-      cancelEditing();
-      afterSave?.();
-    } catch {
-      restoreAfterFailure(originalValue);
-    } finally {
-      savingCellRef.current = null;
-      setSavingCell(null);
-    }
+    cancelEditing();
+    afterSave?.();
+    enqueueSave(item.id, `${item.id}:${key}`, { properties_json: JSON.stringify(nextProperties) });
   };
 
-  const saveOutput = async (item: Item, afterSave?: () => void) => {
-    const cellKey = `${item.id}:output`;
-    if (savingCellRef.current) return;
-
-    const originalValue = item.body;
+  const saveOutput = (item: Item, afterSave?: () => void) => {
     const nextValue = draft.trim();
     if (!nextValue) {
-      restoreAfterFailure(originalValue);
+      setSaveError("출력물을 입력해 주세요.");
       return;
     }
-
-    if (nextValue === originalValue) {
+    if (nextValue === item.body) {
       cancelEditing();
       afterSave?.();
       return;
     }
 
-    savingCellRef.current = cellKey;
-    setSavingCell(cellKey);
-    try {
-      await onUpdateItem(item.id, { body: nextValue });
-      cancelEditing();
-      afterSave?.();
-    } catch {
-      restoreAfterFailure(originalValue);
-    } finally {
-      savingCellRef.current = null;
-      setSavingCell(null);
-    }
+    cancelEditing();
+    afterSave?.();
+    enqueueSave(item.id, `${item.id}:output`, { body: nextValue });
   };
 
-  const saveDueDate = async (item: Item, afterSave?: () => void) => {
-    const cellKey = item.id + ":due_at";
-    if (savingCellRef.current) return;
-    const originalValue = editDueDate(item.due_at);
+  const saveDueDate = (item: Item, afterSave?: () => void) => {
     const nextValue = draft;
-    if (nextValue === originalValue) { cancelEditing(); afterSave?.(); return; }
-    savingCellRef.current = cellKey;
-    setSavingCell(cellKey);
-    try { await onUpdateItem(item.id, { due_at: nextValue || null }); cancelEditing(); afterSave?.(); }
-    catch { restoreAfterFailure(originalValue); }
-    finally { savingCellRef.current = null; setSavingCell(null); }
+    if (nextValue === editDueDate(item.due_at)) {
+      cancelEditing();
+      afterSave?.();
+      return;
+    }
+
+    cancelEditing();
+    afterSave?.();
+    enqueueSave(item.id, item.id + ":due_at", { due_at: nextValue || null });
   };
 
   const runRowAction = async (
@@ -412,7 +411,7 @@ export function PrintQueueView({
     item: Item,
     index: number,
   ) => {
-    if (isReordering || savingCellRef.current || event.button !== 0) return;
+    if (isReordering || event.button !== 0) return;
 
     event.currentTarget.setPointerCapture(event.pointerId);
     dragStateRef.current = {
@@ -814,7 +813,7 @@ export function PrintQueueView({
                           ) : column.key === "colors" ? (
                             <button className="print-queue-cell-button print-queue-color-button" type="button" onClick={() => startEditing(cellKey, editableValue)}>
                               {Array.isArray(properties.colors) && properties.colors.length > 0 ? (
-                                <span className="print-queue-color-chips">{properties.colors.map((color) => <span className="print-queue-color-chip" key={color}><span className="print-queue-color-swatch" style={{ backgroundColor: color }} aria-hidden="true"/><span>{color}</span></span>)}</span>
+                                <span className="print-queue-color-chips">{properties.colors.map((color) => <span className="print-queue-color-chip" key={color}><span className="print-queue-color-swatch" style={{ backgroundColor: getColorSwatch(color) }} aria-hidden="true"/><span>{color}</span></span>)}</span>
                               ) : "—"}
                             </button>
                           ) : column.key === "model_url" ? (

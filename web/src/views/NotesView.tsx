@@ -19,7 +19,9 @@ type NotesViewProps = {
   onMoveToQuestion?: (item: Item) => Promise<unknown>; onSetToday?: (item: Item) => Promise<unknown>;
   onClearDue?: (item: Item) => Promise<unknown>; projects?: ProjectOption[];
   onProjectChange?: (item: Item, projectId: string | null) => Promise<unknown>;
+  onProjectCreate?: (name: string) => Promise<ProjectOption>;
   renderItemDetails?: (item: Item) => ReactNode; renderEditorDetails?: (item: Item) => ReactNode; renderBeforeList?: ReactNode;
+  sectionTitles?: { featured: string; remaining: string };
 };
 
 export function NotesView({
@@ -28,8 +30,8 @@ export function NotesView({
   isError, isSuccess, isFetching, editingItemId, editDraft, editDueAt, editError, isUpdating, deleteError,
   onRetry, onStartEditing, onEditDraftChange, onEditDueChange, onCancelEditing, onSaveEditing, onMoveToNotes,
   onMoveToTodo, onMoveToInbox, onArchive, onPurchase, onDeleteRequest, onSendToPrintQueue, onMoveToModeling,
-  onMoveToQuestion, onSetToday, onClearDue, projects = [], onProjectChange, renderItemDetails, renderEditorDetails,
-  renderBeforeList, showDueControls = true, showTodayAction = true, showCreatedAt = false,
+  onMoveToQuestion, onSetToday, onClearDue, projects = [], onProjectChange, onProjectCreate, renderItemDetails, renderEditorDetails,
+  renderBeforeList, sectionTitles, showDueControls = true, showTodayAction = true, showCreatedAt = false,
 }: NotesViewProps) {
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
   useEffect(() => setOpenActionMenuId(null), [editingItemId]);
@@ -66,8 +68,8 @@ export function NotesView({
       {isError && <div className="state-panel state-panel--error" role="alert"><span className="state-panel__icon"><Icon name="refresh" size={22}/></span><div><h3>{errorTitle ?? `${viewTitle}를 불러오지 못했습니다.`}</h3><p>Worker 연결 상태를 확인한 뒤 다시 시도해 주세요.</p></div><button type="button" onClick={onRetry}>다시 시도</button></div>}
       {isSuccess && displayItems.length===0 && <div className="state-panel state-panel--empty"><span className="state-panel__icon"><Icon name="notes" size={24}/></span><div><h3>{emptyTitle ?? `${viewTitle}가 비어 있습니다.`}</h3><p>{emptyDescription}</p></div></div>}
       {isSuccess && displayItems.map((item,index)=><Fragment key={item.id}>
-        {overdueCount>0 && index===0 && <div className="today-section-heading"><h3>기한 지남</h3><span>{overdueCount}개</span></div>}
-        {overdueCount>0 && index===overdueCount && <div className="today-section-heading"><h3>오늘</h3><span>{items.length}개</span></div>}
+        {overdueCount>0 && index===0 && <div className="today-section-heading"><h3>{sectionTitles?.featured ?? "기한 지남"}</h3><span>{overdueCount}개</span></div>}
+        {overdueCount>0 && index===overdueCount && <div className="today-section-heading"><h3>{sectionTitles?.remaining ?? "오늘"}</h3><span>{items.length}개</span></div>}
         <article className={`note-card${editingItemId===item.id?" note-card--editing":""}`}>
           <span className="note-card__marker" aria-hidden="true"><Icon name="notes" size={18}/></span>
           <div className="note-card__content">
@@ -80,7 +82,7 @@ export function NotesView({
               <div className="note-card__editor-actions"><button className="note-card__cancel" type="button" onClick={onCancelEditing} disabled={isUpdating}>취소</button><button className="note-card__save" type="button" onClick={onSaveEditing} disabled={!editDraft.trim()||isUpdating}>{isUpdating?"저장 중...":"저장"}</button></div>
             </div> : <><p className="note-card__body">{item.body}</p><div className="note-card__meta"><span className="kind-badge">{getItemKindLabel(item)}</span>{showDueControls && item.due_at!==null && <><span className="meta-separator" aria-hidden="true"/><time dateTime={item.due_at}>기한 {formatCreatedAt(item.due_at)}</time></>}{showCreatedAt && <><span className="meta-separator" aria-hidden="true"/><time dateTime={item.created_at}>{formatCreatedAt(item.created_at)}</time></>}</div>{renderItemDetails?.(item)}</>}
           </div>
-          {editingItemId!==item.id && <CardActions isOpen={openActionMenuId===item.id} onOpenChange={(open)=>setOpenActionMenuId(open?item.id:null)} actions={getActions(item)} projectOptions={projects} projectId={item.project_id} onProjectChange={onProjectChange?(projectId)=>onProjectChange(item,projectId):undefined}/>}
+          {editingItemId!==item.id && <CardActions isOpen={openActionMenuId===item.id} onOpenChange={(open)=>setOpenActionMenuId(open?item.id:null)} actions={getActions(item)} projectOptions={projects} projectId={item.project_id} onProjectChange={onProjectChange?(projectId)=>onProjectChange(item,projectId):undefined} onProjectCreate={onProjectCreate}/>}
         </article>
       </Fragment>)}
     </div>

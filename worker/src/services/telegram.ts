@@ -107,12 +107,16 @@ async function sendTelegramReaction(
       },
     );
 
-    if (!response.ok) {
-      console.warn(
-        "Telegram reaction failed",
-        response.status,
-        await response.text(),
-      );
+    const result = await response
+      .json<{ ok?: boolean; error_code?: number; description?: string }>()
+      .catch(() => null);
+
+    if (!response.ok || result?.ok !== true) {
+      console.warn("Telegram reaction failed", {
+        status: response.status,
+        errorCode: result?.error_code,
+        description: result?.description,
+      });
     }
   } catch (error) {
     console.warn("Telegram reaction request failed", error);
@@ -446,7 +450,7 @@ async function saveTelegramPrintJob(
   });
 
   await sendTelegramReaction(env, message);
-  await sendTelegramMessage(env, message, `Print Queue item created: ${body}`);
+  await sendTelegramMessage(env, message, `Print Queue에 출력 작업을 추가했습니다: ${body}`);
   return { result: "stored" as const };
 }
 
