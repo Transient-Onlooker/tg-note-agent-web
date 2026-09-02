@@ -1,462 +1,260 @@
 # NoteRelay
 
-> Telegram으로 빠르게 기록하고, Web에서 정리하는 개인용 Capture & Workspace 시스템.
+> Telegram으로 빠르게 기록하고, Web에서 정리하는 개인용 Capture & Workspace.
 
-NoteRelay는 생각난 내용을 **Telegram에서 즉시 Capture**하고, 이후 **Web Workspace에서 메모·할 일·구매 항목·3D 프린트 작업 등을 관리**하기 위한 개인용 도구입니다.
+NoteRelay는 입력 원문을 안전하게 보존하면서 Inbox, Todo, Projects, Purchase, Print Queue 등으로 정리하는 가벼운 개인 노트 시스템입니다.
 
-핵심 원칙은 단순합니다.
+- **Telegram**: 가장 빠른 Capture 및 구조화된 `/print` 입력
+- **Web**: 정리·분류·편집을 위한 Workspace
+- **Cloudflare Worker + Hono**: API, 인증, Telegram webhook
+- **Cloudflare D1**: 단일 데이터 원본
+- **Durable Object + WebSocket**: 변경 알림
 
-- **Telegram** = 가장 빠른 입력 UI
-- **Web** = 실제 정리·관리 Workspace
-- **Cloudflare Worker** = API / Telegram integration
-- **Cloudflare D1** = 단일 데이터 원본(Source of Truth)
-- **Durable Object WebSocket** = 변경 알림
-- **AI** = 향후 검색·요약·분류를 돕는 보조 기능이며, 기본 데이터 흐름의 필수 요소가 아님
+## 현재 기능
 
----
+### Capture와 Item
 
-## Current Status
+- Web Quick Capture와 Telegram 텍스트 Capture
+- Telegram webhook secret 및 허용 사용자 검증
+- Telegram `chat_id + message_id` 기준 중복 방지
+- 원본은 `captures`에 보존하고, 관리용 레코드는 `items`에 생성
+- 저장 후 원본 Telegram 메시지에 ✅ reaction을 best-effort로 요청
+- reaction 실패는 저장을 rollback하거나 webhook을 실패시키지 않음
+- 일반 Telegram 텍스트는 Inbox Item으로 저장
 
-### 구현됨
+### Workspace
 
-- Telegram Capture → D1 저장
-- Web Quick Capture
-- Access Key 기반 Web API 인증
-- WebSocket 기반 실시간 갱신
-- Inbox
-- Notes
-- Todo
-- Today + Overdue
-- Due date/time 직접 편집
-- Purchase 기본 분류
-- Print Queue 독립 Workspace
-- Archive
-- Trash / Restore
-- Sidebar item count
-- Soft Delete + Capture 원본 보존
-- GitHub Pages 자동 배포
-- Cloudflare Worker 자동 배포
+- Inbox, Todo, Today, Notes
+- 3D 모델링·궁금증 reference views
+- Projects, Purchase, Print Queue, Archive, Trash
+- 데스크톱 sidebar와 모바일 drawer navigation
+- 카드의 inline action + `…` 메뉴, 터치 환경 first-tap guard
+- 메뉴는 viewport safe area를 고려하며 공간이 부족하면 메뉴 내부만 스크롤
+- 모든 view의 loading, empty, error, sync 상태
+- WebSocket event 수신 시 TanStack Query 기반 최신화
 
-### 다음 작업
+### Item 관리
 
-- 일반 Item 편집 optimistic UX / rollback 개선
-- 일반 카드의 명시적 `Todo로 이동` 액션
-- Print Queue compact row 회귀 수정
-- Print Queue 편집 셀 자동 높이 확장
-- Print Queue 모델 링크 클릭 처리
-- Snackbar Undo
-- Purchase `전체 / 국내 / 해외` 분류 + 상품 링크
-- Projects Workspace
-- Telegram `/print` structured command
-- Search
-- `궁금증` 분류/Workspace
+- `kind`, `status`, `project_id`, `due_at`, `properties_json` PATCH
+- 이동/분류의 optimistic UI와 실패 rollback
+- 최근 액션 snackbar 및 Undo
+- 편집 실패 시 작성 중이던 draft를 복원
+- 연속 편집 시 이전 요청이 다른 Item editor를 닫거나 덮어쓰지 않도록 보호
+- soft delete, Trash restore, Trash 비우기
+- soft delete와 Trash 비우기는 Capture 원본을 삭제하지 않음
 
----
+## 주요 화면 규칙
 
-## Features
+### Inbox와 미정리
 
-### Telegram Capture
+Inbox는 `kind=inbox AND status=active` Item입니다. `triaged_at`은 Inbox 필터가 아니라 독립적인 미정리 상태 데이터입니다.
 
-Telegram은 NoteRelay의 **빠른 입력 전용 인터페이스**입니다.
+명시적으로 Todo, Notes, Purchase, Print Queue, reference view 등으로 이동하면 `triaged_at`을 기록합니다. due date 변경이나 Today 지정만으로는 `triaged_at`을 바꾸지 않습니다.
 
-- Telegram Bot Webhook 기반 Capture
-- 허용된 Telegram 사용자만 저장 가능
-- Webhook Secret 검증
-- 동일 Telegram 메시지 중복 저장 방지
-- 원문을 `captures`에 보존
-- 관리용 `items` 레코드를 별도로 생성
-- 저장 성공 시 원본 메시지에 👍 Reaction
-- Reaction 실패는 저장을 rollback하지 않는 best-effort 처리
+### Todo와 Today
 
-기본 Telegram 메시지는 `kind=inbox`, `status=active` Item으로 생성됩니다.
+- Todo: `kind=task AND status=active`
+- Todo는 overdue → 오늘/미래 due → due 없음 순으로 정렬됩니다.
+- 오늘 마감 Todo는 Todo 화면에서 별도 섹션으로 표시됩니다.
+- Today는 kind가 아닌 `due_at` 기반 화면입니다.
+- Today에는 active Item 중 브라우저 로컬 기준 다음날 00:00 이전 due를 가진 Item이 표시되며, overdue도 포함합니다.
+- `오늘로 지정`은 분류를 바꾸지 않고 `due_at`만 오늘로 설정합니다.
 
-```text
-Telegram message
-       ↓
-Cloudflare Worker
-       ↓
-Webhook / user validation
-       ↓
-Capture 저장
-       ↓
-Inbox Item 생성
-       ↓
-Cloudflare D1
-       ↓
-Realtime broadcast
-       ↓
-👍 Reaction
-```
+### Projects
 
----
+- `projects` table과 `items.project_id`를 사용합니다.
+- 프로젝트 생성·이름 변경·삭제, 프로젝트별 Item 목록, Item 연결·해제를 지원합니다.
+- 카드의 프로젝트 선택 메뉴에서 `+ 새 프로젝트 만들기` 후 즉시 연결할 수 있습니다.
+- 프로젝트 삭제 시 연결 Item은 삭제하지 않습니다. 연결된 active Item은 `project_id`를 해제하고 Archive로 이동합니다.
 
-### Web Workspace
+### Purchase
 
-Web은 NoteRelay의 실제 관리 화면입니다.
+`properties_json`의 값을 사용합니다.
 
-현재 Navigation:
-
-```text
-Workspace
-├─ Inbox
-├─ Todo
-├─ Today
-└─ Notes
-
-Collections
-├─ Projects        # UI 개발 예정
-├─ Print Queue
-└─ Purchase
-
-Library
-├─ Archive
-└─ Trash
-```
-
-#### Inbox
-
-새로 들어온 기본 Item(`kind=inbox`)을 확인하고 다른 종류로 정리하는 공간입니다.
-
-주요 흐름:
-
-- Quick Capture
-- Notes로 분류
-- Today로 지정
-- Purchase로 분류
-- Print Queue로 이동
-- Archive
-- Soft Delete
-
-#### Todo
-
-`kind=task`, `status=active`인 **전체 미완료 Task**를 보여줍니다.
-
-Todo는 날짜가 없어도 존재할 수 있습니다.
-
-#### Today
-
-Today는 Todo와 별도 데이터 저장소가 아닙니다.
-
-- `kind=task`
-- `status=active`
-- `due_at`이 존재
-- 브라우저 로컬 날짜 기준으로 오늘까지 도래한 Task
-
-화면에서는 다음 두 영역으로 나눕니다.
-
-- **기한 지남(Overdue)** — 오늘보다 이전 due
-- **Today** — 오늘 due
-
-날짜가 자정에 넘어가면 로컬 midnight timer가 날짜 경계와 Query를 갱신합니다.
-
-Overdue Item의 원래 `due_at`은 자동 변경하지 않으며, 필요하면 사용자가 직접 오늘로 미룰 수 있습니다.
-
-#### Notes
-
-정리된 일반 메모(`kind=note`)를 관리합니다.
-
-#### Purchase
-
-현재는 `kind=purchase` Item을 모아보는 기본 Workspace입니다.
-
-향후:
-
-- 전체 / 국내 / 해외
-- 상품 URL
-- 구매 상태/메타데이터
-
-를 추가할 예정입니다.
-
-#### Archive
-
-Archive는 삭제와 다릅니다.
-
-- Archive: `status=archived`
-- Trash: `deleted_at IS NOT NULL`
-
-보관 Item은 복원할 수 있습니다.
-
-#### Trash
-
-삭제는 hard delete가 아니라 **soft delete**입니다.
-
-Item에 `deleted_at`을 기록하고, 원본 Capture는 유지합니다.
-
-Trash에서 Item을 복원할 수 있습니다.
-
----
+- `purchase_source`: `domestic` 또는 `overseas`
+- `purchase_url`: 상품 URL
+- 전체 탭에는 legacy Item도 보이며, 국내·해외 탭은 해당 source만 표시합니다.
+- `http`/`https` URL만 새 탭 링크로 렌더링하고 그 외 값은 일반 텍스트로 보존합니다.
 
 ## Print Queue
 
-Print Queue는 Notes의 필터 화면이 아니라, **3D 프린트 출력 요청/작업을 관리하는 독립 Workspace**입니다.
+Print Queue는 `kind=print_job`, `status=active` Item의 독립 Workspace입니다. 별도 print_jobs table은 사용하지 않습니다.
 
-Item은 `kind=print_job`을 사용하며 별도 `print_jobs` 테이블을 만들지 않습니다.
+| 저장 위치 | 값 |
+| --- | --- |
+| `items.body` | 출력물 |
+| `items.due_at` | 출력 예정일 |
+| `properties_json.customer` | 의뢰인 |
+| `properties_json.colors` | 색상 배열 |
+| `properties_json.grams` | 무게 |
+| `properties_json.price` | 금액 |
+| `properties_json.payment` | 입금 정보 |
+| `properties_json.queue_status` | Queue 상태 |
+| `properties_json.model_url` | 모델 URL |
+| `properties_json.note` | 비고 |
 
-### Fields
+Queue 상태는 Item lifecycle과 분리됩니다.
 
-Print Queue의 구조화된 값은 `items.properties_json`에 저장합니다.
+- `missing` — 미상
+- `waiting` — 대기
+- `printing` — 출력중
+- `done` — 완료
+- `paused` — 보류
 
-| 필드 | 의미 |
-|---|---|
-| `customer` | 의뢰인 |
-| `colors` | 색상 |
-| `grams` | 무게 |
-| `price` | 금액 |
-| `payment` | 입금 정보 |
-| `queue_status` | 출력 Queue 상태 |
-| `model_url` | 모델 링크 |
-| `note` | 비고 |
+기존 비표준 상태는 사용자가 새 표준 값을 명시적으로 선택하기 전까지 원문으로 표시·보존합니다.
 
-출력물 이름은 현재 **`items.body`를 단일 기준**으로 사용합니다.
+- `position ASC → created_at ASC → id ASC`로 실제 출력 순서를 정합니다.
+- 드래그는 순번 셀에서 시작하며, 포인터가 다른 열로 이동해도 행의 Y 위치로 drop target을 계산합니다.
+- 출력물·비고 textarea는 내용에 맞게 자동 확장되고 max height 이후 내부 스크롤을 사용합니다.
+- 셀 편집은 blur, Enter, Tab/Shift+Tab으로 저장하고 Escape로 취소합니다.
+- 셀 저장은 항목별 백그라운드 큐로 처리되어 다른 셀 입력을 기다리게 하지 않습니다.
+- 색상은 한국어/영문 주요 색상명에 대해 실제 swatch chip으로 표시합니다.
 
-### Queue Status
+## Telegram `/print`
 
-Print Queue의 작업 상태와 Item lifecycle 상태는 분리합니다.
-
-`properties_json.queue_status`:
-
-- 값 없음 → `미상`
-- `waiting` → 대기
-- `printing` → 출력중
-- `done` → 완료
-- `paused` → 보류
-
-`items.status`는 `active`, `archived` 같은 **Item lifecycle** 용도입니다.
-
-### Ordering
-
-Print Queue는 `items.position`을 실제 Queue 순서로 사용합니다.
+`/print`는 AI 추론 없이 명시적으로 전달한 값만 Print Queue Item으로 만듭니다.
 
 ```text
-position ASC
-→ created_at ASC
-→ id ASC
+/print item="케이스" customer="홍길동" colors="black,white" grams=250 price=5000 payment=paid status=waiting date=2026-09-03 model="https://..." note="급함"
 ```
 
-- 새 Print Job은 현재 active Queue의 마지막 `position + 1`
-- 위/아래 버튼으로 순서 이동
-- 이동 후 필요한 Item의 `position`을 PATCH
-- 모바일에서도 동일 기능 제공
+- `item`은 필수이며 `items.body`로 저장됩니다.
+- `date`는 `due_at`, 나머지 구조화 값은 `properties_json`으로 저장됩니다.
+- 숫자·날짜·상태 값은 검증하며 잘못된 입력에는 한국어 사용법 메시지를 보냅니다.
+- 새 작업은 active Print Queue의 마지막 다음 `position`을 받습니다.
+- 일반 Telegram Capture 흐름은 `/print`와 분리되어 유지됩니다.
 
-### Inline Editing
+## API
 
-Spreadsheet 형태로 셀을 직접 편집할 수 있습니다.
-
-- Blur → 저장
-- Enter → 저장
-- Tab / Shift+Tab → 저장 후 다음/이전 셀 이동
-- Escape → 취소
-- 값이 바뀌지 않으면 PATCH 생략
-- Blur + Enter 중복 PATCH 방지
-- 실패 시 서버 값으로 복구 + 오류 피드백
-
----
-
-## Capture와 Item 분리
-
-NoteRelay에서 **Capture는 원본**, **Item은 관리 대상**입니다.
-
-```mermaid
-flowchart TD
-    INPUT[Telegram / Web Input]
-    CAPTURE[Capture\nOriginal Record]
-    ITEM[Item\nManaged Record]
-
-    INPUT --> CAPTURE
-    CAPTURE --> ITEM
-
-    ITEM -->|Archive| ARCHIVED[status = archived]
-    ITEM -->|Soft Delete| TRASH[deleted_at]
-    CAPTURE -->|Preserved| ORIGINAL[Original Text]
-```
-
-이 구조 덕분에 Item을 수정·분류·삭제해도 입력 원문을 별도로 보존할 수 있습니다.
-
----
-
-## Realtime Architecture
-
-D1이 항상 Source of Truth이고 Durable Object는 데이터 저장소가 아니라 **변경 알림 허브**로 사용합니다.
-
-```mermaid
-flowchart LR
-    TG[Telegram] --> WORKER[Cloudflare Worker / Hono]
-    WEB[React Web] -->|REST| WORKER
-
-    WORKER --> D1[(Cloudflare D1)]
-    WORKER --> HUB[RealtimeHub\nDurable Object]
-
-    HUB -->|WebSocket event| WEB
-    WEB -->|invalidate query| QUERY[TanStack Query]
-    QUERY -->|REST refetch| WORKER
-```
-
-Mutation 흐름:
-
-```text
-Web / Telegram mutation
-        ↓
-D1 update
-        ↓
-RealtimeHub broadcast
-        ↓
-WebSocket event
-        ↓
-TanStack Query invalidate
-        ↓
-REST refetch
-        ↓
-D1 최신 상태 반영
-```
-
-WebSocket 연결 후 Web은 첫 메시지로 Access Key를 전달합니다.
-
-```json
-{
-  "type": "auth",
-  "token": "<access-key>"
-}
-```
-
----
-
-## Authentication & Security
-
-### Web API
-
-`/api/*`는 Bearer Access Key로 보호됩니다.
+`/api/*`는 Bearer Access Key가 필요합니다.
 
 ```http
 Authorization: Bearer <WEB_API_TOKEN>
 ```
 
-Web에서 입력한 Access Key는 선택에 따라 `sessionStorage` 또는 `localStorage`에 저장됩니다.
-
-인증이 만료되거나 `401`이 반환되면 저장된 Access Key를 제거하고 다시 잠금 화면으로 전환합니다.
-
-### Telegram
-
-Telegram Capture는 다음을 검증합니다.
-
-- `TELEGRAM_WEBHOOK_SECRET`
-- `TELEGRAM_ALLOWED_USER_ID`
-- Telegram message duplicate
-
-Bot Token, API Token, Webhook Secret 등 실제 Secret은 Git에 커밋하지 않습니다.
-
----
-
-## Tech Stack
-
-### Frontend
-
-- React 19
-- TypeScript
-- Vite
-- TanStack Query
-- Oxlint
-- GitHub Pages
-
-### Backend
-
-- Cloudflare Workers
-- Hono
-- TypeScript
-- Wrangler
-
-### Data / Realtime
-
-- Cloudflare D1
-- Durable Objects
-- WebSocket
-
-### Integration
-
-- Telegram Bot API
-- Telegram Webhook
-- `setMessageReaction`
-
----
-
-## Project Structure
+주요 endpoint:
 
 ```text
-tg-note-agent-web/
-├─ web/
-│  ├─ src/
-│  │  ├─ api/             # REST auth/items API client
-│  │  ├─ components/      # App shell / shared UI
-│  │  ├─ config/          # Navigation
-│  │  ├─ utils/           # Date helpers
-│  │  ├─ views/           # Inbox, Todo, Today, Notes, Print Queue...
-│  │  ├─ App.tsx
-│  │  └─ realtime.ts      # WebSocket → Query invalidation
-│  └─ vite.config.ts
-│
-├─ worker/
-│  ├─ src/
-│  │  ├─ services/
-│  │  │  ├─ realtime.ts
-│  │  │  └─ telegram.ts
-│  │  └─ index.ts         # Hono routes / D1 mutations
-│  └─ wrangler.jsonc
-│
-├─ shared/
-│  └─ src/                # Shared Item / Project / Print Job types
-│
-├─ migrations/
-│  └─ 0001_initial.sql
-│
-├─ docs/
-│  ├─ API.md
-│  ├─ DEVELOPMENT_FLOW.md
-│  └─ HANDOFF.md
-│
-├─ .github/workflows/
-│  ├─ deploy-worker.yml
-│  └─ pages-v2.yml
-│
-└─ package.json
+GET    /health
+GET    /api/health
+GET    /api/counts?today_to=<ISO>
+
+GET    /api/items
+POST   /api/items
+PATCH  /api/items/:id
+DELETE /api/items/:id              # soft delete
+POST   /api/items/:id/restore
+
+GET    /api/trash
+DELETE /api/trash                  # Item만 영구 삭제
+
+GET    /api/projects
+POST   /api/projects
+PATCH  /api/projects/:id
+DELETE /api/projects/:id
+
+POST   /telegram/webhook
+GET    /ws
 ```
 
----
+`GET /api/items`는 `kind`, `status`, `project_id`, `due_from`, `due_to` 필터를 지원합니다.
 
-## Data Model
+## Local development
 
-초기 D1 schema에는 다음 entity가 있습니다.
+### 요구 사항
 
-- `captures`
-- `items`
-- `projects`
-- `attachments`
-- `item_revisions`
-- `tags`
-- `item_tags`
+- Node.js 24+
+- npm
+- Wrangler login은 remote D1 또는 deploy 시에만 필요
 
-### Item
+```bash
+npm install
+```
 
-주요 필드:
+`worker/.dev.vars`를 로컬에서만 생성합니다.
+
+```dotenv
+TELEGRAM_BOT_TOKEN=replace-me
+TELEGRAM_WEBHOOK_SECRET=local-test-secret
+TELEGRAM_ALLOWED_USER_ID=123456789
+WEB_API_TOKEN=replace-me
+```
+
+`worker/.dev.vars`와 실제 token·secret은 Git에 커밋하지 않습니다.
+
+Worker와 Web을 각각 실행합니다.
+
+```bash
+npm run dev:worker
+npm run dev:web
+```
+
+기본 local Worker URL은 `http://127.0.0.1:8787`입니다. 필요하면 `web/.env.local`에서 API URL을 지정합니다.
+
+```dotenv
+VITE_API_BASE_URL=http://127.0.0.1:8787
+```
+
+### Database
+
+```bash
+# local
+npx wrangler d1 migrations apply DB --local --config worker/wrangler.jsonc
+
+# production
+npx wrangler d1 migrations apply DB --remote --config worker/wrangler.jsonc
+```
+
+## Validation
+
+```bash
+npm run typecheck:worker
+npm run build:web
+npm run lint --workspace web
+git diff --check
+```
+
+## Deployment
+
+GitHub Actions workflow가 다음을 수행합니다.
+
+- `main` push: GitHub Pages Web build/deploy
+- `worker/**`, `shared/**`, root package file 변경 main push: Worker typecheck/deploy
+
+GitHub Pages base path:
 
 ```text
-id
-capture_id
-parent_id
-project_id
-kind
-status
-title
-body
-due_at
-properties_json
-position
-triaged_at
-created_at
-updated_at
-deleted_at
-version
+/tg-note-agent-web/
 ```
 
-현재 사용되는 주요 `kind`:
+Production API URL은 Pages build workflow에서 다음 값으로 주입됩니다.
+
+```text
+https://tg-note-agent-web-api.junuh145858.workers.dev
+```
+
+Worker deploy에는 repository secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`가 필요합니다. Worker runtime secret은 Cloudflare에 별도로 등록합니다.
+
+```bash
+npx wrangler secret put TELEGRAM_BOT_TOKEN --config worker/wrangler.jsonc
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET --config worker/wrangler.jsonc
+npx wrangler secret put TELEGRAM_ALLOWED_USER_ID --config worker/wrangler.jsonc
+npx wrangler secret put WEB_API_TOKEN --config worker/wrangler.jsonc
+```
+
+## Data model
+
+핵심 entity는 `captures`, `items`, `projects`입니다. `captures`는 입력 원문, `items`는 분류·편집·삭제되는 관리 레코드입니다.
+
+주요 Item 필드:
+
+```text
+id, capture_id, project_id, kind, status, body, due_at,
+properties_json, position, triaged_at, created_at, updated_at,
+deleted_at, version
+```
+
+현재 사용 kind:
 
 ```text
 inbox
@@ -467,270 +265,16 @@ print_job
 reference
 ```
 
-Projects table과 `items.project_id`는 schema에 이미 존재하지만 Projects Workspace는 아직 개발 예정입니다.
-
----
-
-## API Overview
-
-모든 `/api/*` 요청은 Access Key 인증이 필요합니다.
-
-### Health
-
-```http
-GET /health
-GET /api/health
-```
-
-`/health`는 Worker 상태 확인용이며 `/api/health`는 Access Key 검증에도 사용됩니다.
-
-### Items
-
-```http
-GET /api/items
-GET /api/items?kind=task&status=active
-GET /api/items?due_from=<ISO>&due_to=<ISO>
-
-POST /api/items
-PATCH /api/items/:id
-DELETE /api/items/:id
-POST /api/items/:id/restore
-```
-
-지원하는 주요 필터:
-
-- `kind`
-- `status`
-- `project_id`
-- `due_from`
-- `due_to`
-
-### Sidebar Counts
-
-```http
-GET /api/counts?today_to=<ISO>
-```
-
-Web이 브라우저 로컬 기준 **다음날 00:00**을 ISO로 계산해 `today_to`로 전달하고, Worker는 하나의 aggregate query로 Sidebar count를 계산합니다.
-
-### Trash
-
-```http
-GET /api/trash
-```
-
-### Telegram
-
-```http
-POST /telegram/webhook
-```
-
-### Realtime
-
-```http
-GET /ws
-```
-
-WebSocket 연결 후 Access Key 인증 메시지를 전송합니다.
-
----
-
-## Local Development
-
-### Requirements
-
-- Node.js 24+
-- npm
-- Cloudflare account / Wrangler login (remote D1 또는 deploy 시)
-
-### Install
-
-```bash
-npm install
-```
-
-### Worker Environment
-
-`worker/.dev.vars`를 생성합니다.
-
-```env
-TELEGRAM_BOT_TOKEN=replace-me
-TELEGRAM_WEBHOOK_SECRET=local-test-secret
-TELEGRAM_ALLOWED_USER_ID=123456789
-WEB_API_TOKEN=replace-me
-```
-
-`worker/.dev.vars`는 Git에 커밋하지 않습니다.
-
-### Run Worker
-
-```bash
-npm run dev:worker
-```
-
-기본 local API:
-
-```text
-http://127.0.0.1:8787
-```
-
-### Run Web
-
-다른 터미널에서:
-
-```bash
-npm run dev:web
-```
-
-`VITE_API_BASE_URL`이 없으면 Web은 기본적으로 `http://127.0.0.1:8787`을 사용합니다.
-
-필요하면 `web/.env.local`에 지정할 수 있습니다.
-
-```env
-VITE_API_BASE_URL=http://127.0.0.1:8787
-```
-
----
-
-## Database
-
-### Local migration
-
-```bash
-npx wrangler d1 migrations apply DB --local --config worker/wrangler.jsonc
-```
-
-### Production migration
-
-```bash
-npx wrangler d1 migrations apply DB --remote --config worker/wrangler.jsonc
-```
-
-D1이 NoteRelay의 단일 Source of Truth입니다.
-
----
-
-## Validation
-
-주요 변경 후 다음 검증을 권장합니다.
-
-```bash
-npm run typecheck:worker
-npm run build:web
-npm run lint --workspace web
-git diff --check
-```
-
----
-
-## Deployment
-
-### Web — GitHub Pages
-
-`main` push 시 GitHub Actions가 Web을 build하고 GitHub Pages에 배포합니다.
-
-Production Web:
-
-```text
-https://transient-onlooker.github.io/tg-note-agent-web/
-```
-
-Vite base path:
-
-```text
-/tg-note-agent-web/
-```
-
-Production build API URL:
-
-```text
-https://tg-note-agent-web-api.junuh145858.workers.dev
-```
-
-### Worker — Cloudflare Workers
-
-Worker 관련 경로가 `main`에 push되면 GitHub Actions가 자동 배포합니다.
-
-Production Worker:
-
-```text
-https://tg-note-agent-web-api.junuh145858.workers.dev
-```
-
-GitHub Actions repository secrets:
-
-```text
-CLOUDFLARE_API_TOKEN
-CLOUDFLARE_ACCOUNT_ID
-```
-
-수동 배포:
-
-```bash
-npm run deploy --workspace worker
-```
-
-Worker runtime secrets는 Cloudflare에 별도로 등록합니다.
-
-```bash
-npx wrangler secret put TELEGRAM_BOT_TOKEN --config worker/wrangler.jsonc
-npx wrangler secret put TELEGRAM_WEBHOOK_SECRET --config worker/wrangler.jsonc
-npx wrangler secret put TELEGRAM_ALLOWED_USER_ID --config worker/wrangler.jsonc
-npx wrangler secret put WEB_API_TOKEN --config worker/wrangler.jsonc
-```
-
----
-
-## Product Direction
-
-NoteRelay는 범용 문서 편집기나 Notion clone을 목표로 하지 않습니다.
-
-우선순위는 다음과 같습니다.
-
-1. **Capture가 빨라야 한다.**
-2. **원본 데이터가 안전해야 한다.**
-3. **Web에서 분류와 관리가 명확해야 한다.**
-4. **구조는 가능한 한 기존 `items` 중심으로 단순하게 유지한다.**
-5. **AI가 없어도 모든 핵심 기능이 동작해야 한다.**
-6. **AI는 검색·요약·분류 제안의 assistant 역할만 한다.**
-
-현재 Print Queue처럼 도메인별 구조화 데이터가 필요할 때도 먼저 `items + properties_json` 조합을 사용하고, 별도 테이블은 실제 필요성이 확인된 뒤 추가합니다.
-
----
-
-## Roadmap
-
-### Near Term
-
-- Item edit optimistic update / rollback
-- Todo 이동 UX 정리
-- Print Queue row / inline editing UX polish
-- Print Queue model URL link
-- Undo snackbar
-- Purchase 국내/해외 + 상품 링크
-
-### Next
-
-- Projects folder-style Workspace
-- Telegram `/print` structured command
-- Search
-- `궁금증` Workspace
-- Sidebar / mobile UX refinement
-
-### Later
-
-- Item revisions 활용
-- Attachments
-- Multi-line Capture split UI
-- AI-assisted classification suggestions
-- AI search / summarization
-
-AI가 Item을 임의로 수정하거나 자동으로 DB mutation하는 구조는 기본 방향이 아닙니다.
-
----
+## Product direction
+
+NoteRelay는 범용 Notion clone이 아니라 빠른 개인 Inbox 중심 도구입니다.
+
+1. Capture가 빨라야 합니다.
+2. 원본 데이터는 안전하게 보존해야 합니다.
+3. Web에서 분류와 관리가 명확해야 합니다.
+4. 새 도메인 데이터는 우선 `items + properties_json`으로 단순하게 모델링합니다.
+5. AI 없이 핵심 흐름이 완성되어야 하며, AI는 향후 보조 역할만 합니다.
 
 ## License
 
-이 저장소는 현재 개인 프로젝트로 관리되고 있습니다.
-
-외부 재사용을 위한 명시적 라이선스는 필요 시 추후 추가할 수 있습니다.
+개인 프로젝트입니다. 외부 재사용을 위한 라이선스는 필요 시 추가합니다.
