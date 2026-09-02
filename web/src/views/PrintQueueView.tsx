@@ -70,10 +70,10 @@ const numberFormatter = new Intl.NumberFormat("ko-KR");
 function getColorSwatch(color: string) {
   const normalized = color.trim().toLowerCase().replaceAll(" ", "");
   const named: Array<[string[], string]> = [
-    [["red", "\ube68\uac15", "\ube68\uac04\uc0c9", "\ub808\ub4dc"], "#dc4b4b"],
-    [["black", "\uac80\uc815", "\uac80\uc740\uc0c9", "\ube14\ub799"], "#242424"],
-    [["white", "\ud770\uc0c9", "\ud654\uc774\ud2b8"], "#f7f7f4"],
-    [["mint", "\ubbfc\ud2b8"], "#55bfa8"],
+    [["red", "\ube68", "\ube68\uac15", "\ube68\uac04\uc0c9", "\ub808\ub4dc"], "#dc4b4b"],
+    [["black", "\uac80", "\uac80\uc815", "\uac80\uc740\uc0c9", "\ud751\uc0c9", "\ube14\ub799"], "#242424"],
+    [["white", "\ud770", "\ud770\uc0c9", "\ud654\uc774\ud2b8"], "#f7f7f4"],
+    [["mint", "\ubbfc\ud2b8", "\ubbfc\ud2b8\uc0c9"], "#55bfa8"],
     [["blue", "\ud30c\ub791", "\ud30c\ub780\uc0c9", "\ube14\ub8e8", "\ub0a8\uc0c9", "\ub124\uc774\ube44"], "#4d7fd8"],
     [["yellow", "\ub178\ub791", "\ub178\ub780\uc0c9", "\uc610\ub85c"], "#e5bc3f"],
     [["green", "\ucd08\ub85d", "\ucd08\ub85d\uc0c9", "\uadf8\ub9b0"], "#53a45d"],
@@ -91,7 +91,7 @@ function getColorSwatch(color: string) {
 
 function getColorValues(value: unknown) {
   const source = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
-  return source.flatMap((color) => String(color).split(/[,/|]/)).map((color) => color.trim()).filter(Boolean);
+  return source.flatMap((color) => String(color).split(/[,/|\s]+/)).map((color) => color.trim()).filter(Boolean);
 }
 function getHttpUrl(value: string) {
   try { const url = new URL(value); return url.protocol === "http:" || url.protocol === "https:" ? url.href : null; } catch { return null; }
@@ -812,7 +812,7 @@ export function PrintQueueView({
                           ) : column.key === "colors" ? (
                             <button className="print-queue-cell-button print-queue-color-button" type="button" onClick={() => startEditing(cellKey, editableValue)}>
                               {getColorValues(properties.colors).length > 0 ? (
-                                <span className="print-queue-color-chips">{getColorValues(properties.colors).map((color) => <span className="print-queue-color-chip" key={color}><span className="print-queue-color-swatch" style={{ backgroundColor: getColorSwatch(color) }} aria-hidden="true"/><span>{color}</span></span>)}</span>
+                                <span className="print-queue-color-chips"><span className="print-queue-color-swatches" aria-hidden="true">{getColorValues(properties.colors).map((color) => <span className="print-queue-color-swatch" key={color} style={{ backgroundColor: getColorSwatch(color) }}/>)}</span><span>{getColorValues(properties.colors).join(", ")}</span></span>
                               ) : "—"}
                             </button>
                           ) : column.key === "model_url" ? (

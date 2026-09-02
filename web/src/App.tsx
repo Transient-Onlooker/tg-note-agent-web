@@ -910,7 +910,8 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const tomorrowEndDate = new Date(tomorrowStart);
   tomorrowEndDate.setDate(tomorrowEndDate.getDate() + 1);
   const tomorrowEnd = tomorrowEndDate.toISOString();
-  const todoTodayItems = todoItems.filter((item) => item.due_at !== null && item.due_at < todayRange.dueTo);
+  const todoOverdueItems = todoItems.filter((item) => item.due_at !== null && item.due_at < todayRange.dueFrom);
+  const todoTodayItems = todoItems.filter((item) => item.due_at !== null && item.due_at >= todayRange.dueFrom && item.due_at < todayRange.dueTo);
   const todoTomorrowItems = todoItems.filter((item) => item.due_at !== null && item.due_at >= tomorrowStart && item.due_at < tomorrowEnd);
   const todoLaterItems = todoItems.filter((item) => item.due_at !== null && item.due_at >= tomorrowEnd);
   const todoUnscheduledItems = todoItems.filter((item) => item.due_at === null);
@@ -1252,6 +1253,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
             showCreatedAt={false}
             items={[]}
             sectionedItems={[
+              { title: "\uae30\ud55c \uc9c0\ub0a8", items: todoOverdueItems },
               { title: "오늘 마감", items: todoTodayItems },
               { title: "내일 마감", items: todoTomorrowItems },
               { title: "이후 마감", items: todoLaterItems },

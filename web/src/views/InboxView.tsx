@@ -27,7 +27,7 @@ export function InboxView(props:InboxViewProps){
     {key:"question",className:"note-card__question",label:"궁금증으로 이동",icon:<Icon name="question" size={17}/>,onClick:()=>onMoveToQuestion(item)},
     {key:"print",className:"note-card__print-queue",label:"Print Queue로 이동",icon:<Icon name="print-queue" size={17}/>,onClick:()=>onSendToPrintQueue(item)},
     {key:"purchase",className:"note-card__purchase",label:"Purchase로 이동",icon:<Icon name="purchase" size={17}/>,onClick:()=>onPurchase(item)},
-    {key:"archive",className:"note-card__archive",label:"Archive로 이동",icon:<Icon name="archive" size={17}/>,onClick:()=>onArchive(item),inline:true,menuCore:true},
+    {key:"archive",className:"note-card__archive",label:"Archive로 이동",icon:<Icon name="archive" size={17}/>,onClick:()=>onArchive(item)},
     {key:"delete",className:"note-card__delete",label:"삭제",icon:<Icon name="delete" size={17}/>,onClick:()=>onDeleteRequest(item)},
   ];
   return <section className="inbox-view" aria-labelledby="inbox-title">

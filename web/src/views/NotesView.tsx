@@ -63,7 +63,7 @@ export function NotesView({
     if (onSendToPrintQueue && item.kind !== "print_job") actions.push({ key:"print", className:"note-card__print-queue", label:"Print Queue로 이동", icon:<Icon name="print-queue" size={17}/>, onClick:()=>onSendToPrintQueue(item) });
     if (onPurchase && item.kind !== "purchase") actions.push({ key:"purchase", className:"note-card__purchase", label:"Purchase로 이동", icon:<Icon name="purchase" size={17}/>, onClick:()=>onPurchase(item) });
     if (showDueControls && onClearDue && item.due_at !== null) actions.push({ key:"clear-due", className:"note-card__today note-card__today-clear", label:"기한 제거", icon:<Icon name="close" size={17}/>, onClick:()=>onClearDue(item) });
-    actions.push({ key:"archive", className:"note-card__archive", label:"Archive로 이동", icon:<Icon name="archive" size={17}/>, onClick:()=>onArchive(item), inline:true, menuCore:true });
+    actions.push({ key:"archive", className:"note-card__archive", label:"Archive로 이동", icon:<Icon name="archive" size={17}/>, onClick:()=>onArchive(item) });
     actions.push({ key:"delete", className:"note-card__delete", label:"삭제", icon:<Icon name="delete" size={17}/>, onClick:()=>onDeleteRequest(item) });
     return actions;
   };
