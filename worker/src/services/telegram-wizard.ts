@@ -12,6 +12,7 @@ export type PrintWizardSession = {
   updatedAt: number;
   expiresAt: number;
   lastPromptMessageId?: number;
+  lastActionMessageId?: number;
   lastReplyMessageId?: number;
   lastCallbackId?: string;
   lastCallbackMessageId?: number;
@@ -43,6 +44,7 @@ type NextRequest = {
 };
 type PromptRequest = {
   messageId?: number;
+  actionMessageId?: number;
   expectedStep?: number;
 };
 
@@ -96,6 +98,7 @@ export class TelegramPrintWizard extends DurableObject<Record<string, never>> {
       const nextSession: PrintWizardSession = {
         ...session,
         lastPromptMessageId: payload.messageId,
+        ...(payload.actionMessageId !== undefined ? { lastActionMessageId: payload.actionMessageId } : {}),
         updatedAt: Date.now(),
         expiresAt: this.getExpiration(),
       };
@@ -126,6 +129,7 @@ export class TelegramPrintWizard extends DurableObject<Record<string, never>> {
         step: session.step + 1,
         values: { ...session.values, [field.key]: value },
         lastPromptMessageId: undefined,
+        lastActionMessageId: undefined,
         ...(payload.replyMessageId !== undefined ? { lastReplyMessageId: payload.replyMessageId } : {}),
         ...(payload.callbackId ? { lastCallbackId: payload.callbackId } : {}),
         ...(payload.callbackMessageId !== undefined ? { lastCallbackMessageId: payload.callbackMessageId } : {}),

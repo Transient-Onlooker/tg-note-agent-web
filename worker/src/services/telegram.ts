@@ -109,15 +109,21 @@ async function sendTelegramReaction(
       },
     );
 
-    const result = await response
-      .json<{ ok?: boolean; error_code?: number; description?: string }>()
-      .catch(() => null);
+    const responseText = await response.text();
+    let result: { ok?: boolean; error_code?: number; description?: string } | null = null;
+    try {
+      result = JSON.parse(responseText) as { ok?: boolean; error_code?: number; description?: string };
+    } catch {
+      // Telegram normally returns JSON; retain a bounded raw body for malformed responses.
+    }
 
     if (!response.ok || result?.ok !== true) {
       console.warn("Telegram reaction failed", {
         status: response.status,
+        ok: result?.ok,
         errorCode: result?.error_code,
         description: result?.description,
+        responseBody: result ? undefined : responseText.slice(0, 500),
       });
     }
   } catch (error) {
@@ -128,12 +134,15 @@ async function sendTelegramReaction(
 type TelegramReplyTarget = Pick<TelegramMessage, "message_id" | "chat">;
 type TelegramKeyboard = Array<Array<{ text: string; callback_data: string }>>;
 
-async function sendTelegramMessage(env: TelegramEnvironment, message: TelegramReplyTarget, text: string, keyboard?: TelegramKeyboard) {
+async function sendTelegramMessage(env: TelegramEnvironment, message: TelegramReplyTarget, text: string, keyboard?: TelegramKeyboard, forceReply = false) {
   try {
+    const replyMarkup = forceReply
+      ? { force_reply: true }
+      : keyboard ? { inline_keyboard: keyboard } : undefined;
     const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: message.chat.id, reply_parameters: { message_id: message.message_id }, text, ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}) }),
+      body: JSON.stringify({ chat_id: message.chat.id, reply_parameters: { message_id: message.message_id }, text, ...(replyMarkup ? { reply_markup: replyMarkup } : {}) }),
     });
     const result = await response
       .json<{ ok?: boolean; result?: { message_id?: number }; error_code?: number; description?: string }>()
@@ -210,11 +219,11 @@ async function clearPrintWizard(env: TelegramEnvironment, userId: number) {
   if (!response.ok) console.warn("Telegram print wizard clear failed", response.status);
 }
 
-async function recordPrintWizardPrompt(env: TelegramEnvironment, userId: number, messageId: number, expectedStep: number) {
+async function recordPrintWizardPrompt(env: TelegramEnvironment, userId: number, messageId: number, expectedStep: number, actionMessageId?: number) {
   const response = await getPrintWizardStub(env, userId).fetch("https://telegram-print/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messageId, expectedStep }),
+    body: JSON.stringify({ messageId, expectedStep, actionMessageId }),
   });
   if (!response.ok) console.warn("Telegram print wizard prompt tracking failed", response.status);
 }
@@ -231,10 +240,24 @@ function getPrintWizardSummary(session: PrintWizardSession) {
 
 async function sendPrintWizardPrompt(env: TelegramEnvironment, target: TelegramReplyTarget, session: PrintWizardSession) {
   const field = printWizardFields[session.step];
-  const messageId = !field
-    ? await sendTelegramMessage(env, target, getPrintWizardSummary(session), [[{ text: "\uc800\uc7a5", callback_data: "print:confirm" }, { text: "\ucde8\uc18c", callback_data: "print:cancel" }]])
-    : await sendTelegramMessage(env, target, `[${field.label}] ${field.hint}`, getPrintWizardKeyboard(field.required));
-  if (messageId !== null) await recordPrintWizardPrompt(env, session.userId, messageId, session.step);
+  if (!field) {
+    const summaryMessageId = await sendTelegramMessage(env, target, getPrintWizardSummary(session), [[{ text: "\uc800\uc7a5", callback_data: "print:confirm" }, { text: "\ucde8\uc18c", callback_data: "print:cancel" }]]);
+    if (summaryMessageId !== null) {
+      await recordPrintWizardPrompt(env, session.userId, summaryMessageId, session.step, summaryMessageId);
+    }
+    return;
+  }
+
+  const promptMessageId = await sendTelegramMessage(env, target, `[${field.label}] ${field.hint}`, undefined, true);
+  if (promptMessageId === null) return;
+
+  const actionMessageId = await sendTelegramMessage(
+    env,
+    { chat: target.chat, message_id: promptMessageId },
+    "\uac74\ub108\ub6f0\uae30 \ub610\ub294 \ucde8\uc18c",
+    getPrintWizardKeyboard(field.required),
+  );
+  await recordPrintWizardPrompt(env, session.userId, promptMessageId, session.step, actionMessageId ?? undefined);
 }
 
 async function processPrintWizardCallback(env: TelegramEnvironment, update: TelegramUpdate): Promise<string | null> {
@@ -252,14 +275,14 @@ async function processPrintWizardCallback(env: TelegramEnvironment, update: Tele
     return "wizard_cancelled";
   }
   if (callback.data === "print:skip") {
-    if (session.lastPromptMessageId !== target.message_id) return "ignored";
+    if (session.lastActionMessageId !== target.message_id) return "ignored";
     const field = printWizardFields[session.step];
     if (!field || field.required) { await sendPrintWizardPrompt(env, target, session); return "wizard_required"; }
     const advanced = await advancePrintWizard(env, callback.from.id, "", undefined, callback.id, target.message_id, callback.data);
     if (!advanced.duplicate && advanced.session) await sendPrintWizardPrompt(env, target, advanced.session);
     return advanced.duplicate ? "wizard_duplicate" : "wizard_advanced";
   }
-  if (callback.data !== "print:confirm" || session.step < printWizardFields.length || session.lastPromptMessageId !== target.message_id) return "ignored";
+  if (callback.data !== "print:confirm" || session.step < printWizardFields.length || session.lastActionMessageId !== target.message_id) return "ignored";
   const printJob = buildPrintJob(session.values);
   if ("error" in printJob) { await sendTelegramMessage(env, target, printUsage(printJob.error)); return "command_error"; }
   const confirmation = await claimPrintWizardConfirmation(env, callback.from.id, callback.id, target.message_id, callback.data);
