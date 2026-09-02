@@ -143,10 +143,17 @@ async function answerTelegramCallback(env: TelegramEnvironment, callbackId: stri
     const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ callback_query_id: callbackId }),
     });
-    if (!response.ok) console.warn("Telegram callback response failed", response.status);
-  } catch (error) { console.warn("Telegram callback response request failed", error); }
+    const result = await response.json<{ ok?: boolean; error_code?: number; description?: string }>().catch(() => null);
+    if (!response.ok || result?.ok !== true) {
+      console.warn("Telegram callback acknowledgement failed", { status: response.status, errorCode: result?.error_code, description: result?.description });
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn("Telegram callback acknowledgement request failed", error);
+    return false;
+  }
 }
-
 function getPrintWizardStub(env: TelegramEnvironment, userId: number) {
   return env.TELEGRAM_PRINT_WIZARD.get(env.TELEGRAM_PRINT_WIZARD.idFromName(`telegram-print:${userId}`));
 }
@@ -166,15 +173,23 @@ async function startPrintWizard(env: TelegramEnvironment, message: TelegramMessa
   return (await response.json<{ session: PrintWizardSession }>()).session;
 }
 
-async function advancePrintWizard(env: TelegramEnvironment, userId: number, value: string): Promise<{ session: PrintWizardSession | null; required: boolean }> {
+async function advancePrintWizard(env: TelegramEnvironment, userId: number, value: string, callbackId?: string, callbackMessageId?: number, callbackAction?: string): Promise<{ session: PrintWizardSession | null; required: boolean; duplicate: boolean }> {
   const response = await getPrintWizardStub(env, userId).fetch("https://telegram-print/next", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value }),
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value, callbackId, callbackMessageId, callbackAction }),
   });
-  if (response.status === 400) return { session: null, required: true };
-  if (!response.ok) { console.warn("Telegram print wizard next failed", response.status); return { session: null, required: false }; }
-  return { session: (await response.json<{ session: PrintWizardSession }>()).session, required: false };
+  if (response.status === 400) return { session: null, required: true, duplicate: false };
+  if (!response.ok) { console.warn("Telegram print wizard next failed", response.status); return { session: null, required: false, duplicate: false }; }
+  const result = await response.json<{ session: PrintWizardSession; duplicate?: boolean }>();
+  return { session: result.session, required: false, duplicate: result.duplicate === true };
 }
 
+async function claimPrintWizardConfirmation(env: TelegramEnvironment, userId: number, callbackId: string, callbackMessageId: number, callbackAction: string) {
+  const response = await getPrintWizardStub(env, userId).fetch("https://telegram-print/confirm", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ callbackId, callbackMessageId, callbackAction }),
+  });
+  if (!response.ok) { console.warn("Telegram print wizard confirmation failed", response.status); return null; }
+  return response.json<{ session: PrintWizardSession; duplicate?: boolean }>();
+}
 async function clearPrintWizard(env: TelegramEnvironment, userId: number) {
   const response = await getPrintWizardStub(env, userId).fetch("https://telegram-print/session", { method: "DELETE" });
   if (!response.ok) console.warn("Telegram print wizard clear failed", response.status);
@@ -203,8 +218,9 @@ async function processPrintWizardCallback(env: TelegramEnvironment, update: Tele
   const callback = update.callback_query;
   const target = callback?.message;
   if (!callback || !target || !callback.data?.startsWith("print:")) return null;
-  if (String(callback.from.id) !== env.TELEGRAM_ALLOWED_USER_ID) return "ignored";
   await answerTelegramCallback(env, callback.id);
+  if (String(callback.from.id) !== env.TELEGRAM_ALLOWED_USER_ID) return "ignored";
+
   const session = await readPrintWizardSession(env, callback.from.id);
   if (!session || session.chatId !== target.chat.id) return "ignored";
   if (callback.data === "print:cancel") {
@@ -215,13 +231,15 @@ async function processPrintWizardCallback(env: TelegramEnvironment, update: Tele
   if (callback.data === "print:skip") {
     const field = printWizardFields[session.step];
     if (!field || field.required) { await sendPrintWizardPrompt(env, target, session); return "wizard_required"; }
-    const advanced = await advancePrintWizard(env, callback.from.id, "");
-    if (advanced.session) await sendPrintWizardPrompt(env, target, advanced.session);
-    return "wizard_advanced";
+    const advanced = await advancePrintWizard(env, callback.from.id, "", callback.id, target.message_id, callback.data);
+    if (!advanced.duplicate && advanced.session) await sendPrintWizardPrompt(env, target, advanced.session);
+    return advanced.duplicate ? "wizard_duplicate" : "wizard_advanced";
   }
   if (callback.data !== "print:confirm" || session.step < printWizardFields.length) return "ignored";
   const printJob = buildPrintJob(session.values);
   if ("error" in printJob) { await sendTelegramMessage(env, target, printUsage(printJob.error)); return "command_error"; }
+  const confirmation = await claimPrintWizardConfirmation(env, callback.from.id, callback.id, target.message_id, callback.data);
+  if (!confirmation || confirmation.duplicate) return confirmation?.duplicate ? "wizard_duplicate" : "wizard_error";
   const sourceMessage: TelegramMessage = { message_id: session.sourceMessageId, text: "/print", chat: { id: session.chatId }, from: { id: session.userId } };
   const result = await saveTelegramPrintJob(env, update, sourceMessage, printJob.body, printJob.dueAt, printJob.properties);
   if (result.result === "stored" || result.result === "duplicate") await clearPrintWizard(env, callback.from.id);
@@ -378,6 +396,18 @@ function parseDueAt(value: string | undefined): ParseResult<string | null> {
   return { value: date.toISOString() };
 }
 
+const printColorAliases: Record<string, string> = {
+  "\ud770": "white", "\ud770\uc0c9": "white", "\ud654\uc774\ud2b8": "white", white: "white",
+  "\uac80": "black", "\uac80\uc815": "black", "\uac80\uc740\uc0c9": "black", black: "black",
+  "\ubbfc\ud2b8": "mint", "\ubbfc\ud2b8\uc0c9": "mint", mint: "mint",
+  "\ube68": "red", "\ube68\uac15": "red", "\ube68\uac04\uc0c9": "red", red: "red",
+};
+
+function normalizePrintColors(value: string | undefined) {
+  if (!value) return [];
+  return value.split(/[\s,\/|]+/).map((color) => color.trim()).filter(Boolean)
+    .map((color) => printColorAliases[color.toLowerCase()] ?? color);
+}
 function buildPrintJob(
   values: PrintCommandValues,
 ): { body: string; dueAt: string | null; properties: PrintJobProperties } | { error: string } {
@@ -400,9 +430,7 @@ function buildPrintJob(
     dueAt: dueAt.value,
     properties: {
       customer: values.customer?.trim() ?? "",
-      colors: values.colors
-        ? values.colors.split(",").map((color) => color.trim()).filter(Boolean)
-        : [],
+      colors: normalizePrintColors(values.colors),
       ...(grams.value === undefined ? {} : { grams: grams.value }),
       ...(price.value === undefined ? {} : { price: price.value }),
       payment: values.payment?.trim() ?? "",

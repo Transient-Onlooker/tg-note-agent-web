@@ -8,12 +8,15 @@ export type PrintWizardSession = {
   sourceMessageId: number;
   step: number;
   values: PrintWizardValues;
+  lastCallbackId?: string;
+  lastCallbackMessageId?: number;
+  lastCallbackAction?: string;
 };
 
 export const printWizardFields = [
   { key: "item", label: "\ucd9c\ub825\ubb3c", required: true, hint: "\ucd9c\ub825\ud560 \ubb3c\uac74 \uc774\ub984\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694." },
   { key: "customer", label: "\uace0\uac1d", required: false, hint: "\uace0\uac1d \uc774\ub984\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694." },
-  { key: "colors", label: "\uc0c9\uc0c1", required: false, hint: "\uc0c9\uc0c1\uc744 \uc27c\ud45c\ub85c \uad6c\ubd84\ud558\uc5ec \uc785\ub825\ud574 \uc8fc\uc138\uc694. \uc608: black,white" },
+  { key: "colors", label: "\uc0c9\uc0c1", required: false, hint: "\uc0c9\uc0c1\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694. \uc5ec\ub7ec \uc0c9\uc0c1\uc740 \uacf5\ubc31 \ub610\ub294 \uc27c\ud45c\ub85c \uad6c\ubd84\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4." },
   { key: "grams", label: "\ubb34\uac8c", required: false, hint: "\uc608\uc0c1 \ubb34\uac8c(g)\ub97c \uc22b\uc790\ub85c \uc785\ub825\ud574 \uc8fc\uc138\uc694." },
   { key: "price", label: "\uae08\uc561", required: false, hint: "\uae08\uc561(\uc6d0)\uc744 \uc22b\uc790\ub85c \uc785\ub825\ud574 \uc8fc\uc138\uc694." },
   { key: "payment", label: "\uacb0\uc81c", required: false, hint: "\uacb0\uc81c \uc0c1\ud0dc \ub610\ub294 \uba54\ubaa8\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694." },
@@ -25,7 +28,12 @@ export const printWizardFields = [
 
 const storageKey = "session";
 type StartRequest = Pick<PrintWizardSession, "chatId" | "userId" | "sourceMessageId">;
-type NextRequest = { value?: string };
+type NextRequest = {
+  value?: string;
+  callbackId?: string;
+  callbackMessageId?: number;
+  callbackAction?: string;
+};
 
 export class TelegramPrintWizard extends DurableObject<Record<string, never>> {
   private async getSession() {
@@ -55,10 +63,17 @@ export class TelegramPrintWizard extends DurableObject<Record<string, never>> {
     if (request.method === "POST" && url.pathname === "/next") {
       const session = await this.getSession();
       if (!session) return Response.json({ error: "not_found" }, { status: 404 });
+      const payload = await request.json<NextRequest>();
+      if ((payload.callbackId && session.lastCallbackId === payload.callbackId) ||
+        (payload.callbackMessageId !== undefined &&
+          payload.callbackAction !== undefined &&
+          payload.callbackMessageId === session.lastCallbackMessageId &&
+          payload.callbackAction === session.lastCallbackAction)) {
+        return Response.json({ session, duplicate: true });
+      }
 
       const field = printWizardFields[session.step];
       if (!field) return Response.json({ session });
-      const payload = await request.json<NextRequest>();
       const value = typeof payload.value === "string" ? payload.value.trim() : "";
       if (field.required && !value) return Response.json({ error: "required" }, { status: 400 });
 
@@ -66,11 +81,37 @@ export class TelegramPrintWizard extends DurableObject<Record<string, never>> {
         ...session,
         step: session.step + 1,
         values: { ...session.values, [field.key]: value },
+        ...(payload.callbackId ? { lastCallbackId: payload.callbackId } : {}),
+        ...(payload.callbackMessageId ? { lastCallbackMessageId: payload.callbackMessageId } : {}),
+        ...(payload.callbackAction ? { lastCallbackAction: payload.callbackAction } : {}),
       };
       await this.ctx.storage.put(storageKey, nextSession);
-      return Response.json({ session: nextSession });
+      return Response.json({ session: nextSession, duplicate: false });
     }
 
+    if (request.method === "POST" && url.pathname === "/confirm") {
+      const session = await this.getSession();
+      if (!session) return Response.json({ error: "not_found" }, { status: 404 });
+      const payload = await request.json<NextRequest>();
+      if ((payload.callbackId && session.lastCallbackId === payload.callbackId) ||
+        (payload.callbackMessageId !== undefined &&
+          payload.callbackAction !== undefined &&
+          payload.callbackMessageId === session.lastCallbackMessageId &&
+          payload.callbackAction === session.lastCallbackAction)) {
+        return Response.json({ session, duplicate: true });
+      }
+      if (session.step < printWizardFields.length) {
+        return Response.json({ error: "incomplete" }, { status: 409 });
+      }
+      const nextSession: PrintWizardSession = {
+        ...session,
+        ...(payload.callbackId ? { lastCallbackId: payload.callbackId } : {}),
+        ...(payload.callbackMessageId ? { lastCallbackMessageId: payload.callbackMessageId } : {}),
+        ...(payload.callbackAction ? { lastCallbackAction: payload.callbackAction } : {}),
+      };
+      await this.ctx.storage.put(storageKey, nextSession);
+      return Response.json({ session: nextSession, duplicate: false });
+    }
     if (request.method === "DELETE" && url.pathname === "/session") {
       await this.ctx.storage.delete(storageKey);
       return Response.json({ ok: true });

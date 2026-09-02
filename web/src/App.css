@@ -1696,7 +1696,7 @@
     top: 0;
     z-index: 20;
     display: grid;
-    grid-template-columns: 40px 1fr 40px;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
     align-items: center;
     height: 62px;
     padding: 0 16px;
@@ -1707,8 +1707,8 @@
   .menu-button {
     display: grid;
     place-items: center;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     padding: 0;
     color: var(--text-soft);
     background: transparent;
@@ -1723,8 +1723,17 @@
   .mobile-brand {
     display: flex;
     gap: 8px;
+    min-width: 0;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
+  }
+
+  .mobile-brand strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .mobile-brand__mark {
@@ -2394,4 +2403,30 @@
   .sidebar-overlay { z-index: var(--z-drawer-backdrop); }
   .sidebar { z-index: var(--z-drawer); }
   .mobile-topbar { z-index: var(--z-mobile-header); }
+}
+
+@media (max-width: 560px) {
+  .mobile-topbar {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    padding: 0 8px;
+  }
+
+  .mobile-brand { justify-content: flex-start; }
+  .mobile-count { box-sizing: border-box; width: 44px; min-width: 44px; }
+  .note-card__inline-actions { display: none; }
+  .note-card__actions { top: 8px; right: 8px; }
+  .note-card__menu-toggle {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    color: var(--text-soft);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    opacity: 1;
+  }
+  .note-card:not(.trash-card) .note-card__content { padding-right: 58px; }
 }

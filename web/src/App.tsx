@@ -329,6 +329,7 @@ function AuthenticatedApp({ onLock }: { onLock: () => void }) {
   const itemsQuery = useQuery({
     queryKey: itemQueryKeys.list(inboxFilters),
     queryFn: () => listItems(inboxFilters),
+    enabled: activeView === "inbox",
   });
 
   const notesQuery = useQuery({
