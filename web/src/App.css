@@ -1704,6 +1704,12 @@
     border-bottom: 1px solid var(--border);
   }
 
+  .mobile-topbar > .menu-button,
+  .mobile-topbar > .mobile-count {
+    position: relative;
+    z-index: 1;
+  }
+
   .menu-button {
     display: grid;
     place-items: center;
@@ -1726,7 +1732,12 @@
     min-width: 0;
     align-items: center;
     justify-content: center;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    max-width: calc(100% - 128px);
     overflow: hidden;
+    transform: translate(-50%, -50%);
   }
 
   .mobile-brand strong {
@@ -2411,7 +2422,7 @@
     padding: 0 8px;
   }
 
-  .mobile-brand { justify-content: flex-start; }
+  .mobile-brand { justify-content: center; }
   .mobile-count { box-sizing: border-box; width: 44px; min-width: 44px; }
   .note-card__inline-actions { display: none; }
   .note-card__actions { top: 8px; right: 8px; }

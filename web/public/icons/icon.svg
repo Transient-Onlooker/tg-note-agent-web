@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="NoteRelay">
+  <rect width="512" height="512" rx="112" fill="#315bd8"/>
+  <path d="M151 371V141h54l102 133V141h54v230h-52L205 237v134z" fill="#fff"/>
+  <path d="M151 385h210" stroke="#a9c0ff" stroke-width="18" stroke-linecap="round"/>
+</svg>

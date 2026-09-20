@@ -88,6 +88,10 @@ async function sendTelegramReaction(
   env: TelegramEnvironment,
   message: TelegramMessage,
 ) {
+  // Telegram only accepts a fixed set of standard emoji reactions. Check mark
+  // is not in that list; thumbs up is supported in private and unrestricted chats.
+  const reaction = "\u{1F44D}";
+
   try {
     const response = await fetch(
       `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setMessageReaction`,
@@ -102,7 +106,7 @@ async function sendTelegramReaction(
           reaction: [
             {
               type: "emoji",
-              emoji: "\u2705",
+              emoji: reaction,
             },
           ],
         }),
@@ -119,10 +123,12 @@ async function sendTelegramReaction(
 
     if (!response.ok || result?.ok !== true) {
       console.warn("Telegram reaction failed", {
+        method: "setMessageReaction",
         status: response.status,
         ok: result?.ok,
         errorCode: result?.error_code,
         description: result?.description,
+        reaction,
         responseBody: result ? undefined : responseText.slice(0, 500),
       });
     }
