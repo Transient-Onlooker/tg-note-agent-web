@@ -2,13 +2,22 @@
 
 > Telegram으로 빠르게 기록하고, Web에서 정리하는 개인용 Capture & Workspace.
 
-NoteRelay는 입력 원문을 안전하게 보존하면서 Inbox, Todo, Projects, Purchase, Print Queue 등으로 정리하는 가벼운 개인 노트 시스템입니다.
+NoteRelay는 **빠른 기록(Capture)** 과 **나중에 정리(Workspace)** 를 분리한 개인용 기록 시스템입니다. Telegram 또는 웹에서 받은 원문은 D1의 `captures`에 보존하고, 수정·분류·삭제하는 작업 항목은 `items`로 관리합니다. 기록을 잘못 수정하거나 통신에 실패해도 원문과 편집 상태를 최대한 안전하게 유지하도록 설계했습니다.
 
-- **Telegram**: 가장 빠른 Capture 및 구조화된 `/print` 입력
-- **Web**: 정리·분류·편집을 위한 Workspace
-- **Cloudflare Worker + Hono**: API, 인증, Telegram webhook
-- **Cloudflare D1**: 단일 데이터 원본
-- **Durable Object + WebSocket**: 변경 알림
+- **입력:** Telegram webhook / Web Quick Capture / 명시적 `/print` 출력 대기열
+- **관리:** Inbox, Todo, Today, Notes, Projects, Purchase, Print Queue, Archive, Trash
+- **서버:** Cloudflare Worker + Hono API, D1 단일 데이터 원본
+- **동기화:** Durable Object / WebSocket 변경 알림 후 TanStack Query 재조회
+- **데이터 보호:** soft delete·복원, Undo, optimistic update 실패 시 rollback, 수정 draft 복원
+
+## 문서 안내
+
+- [API 명세](docs/API.md): 엔드포인트와 요청·응답
+- [개발 흐름](docs/DEVELOPMENT_FLOW.md): 기능 상태와 아키텍처
+- [기존 V0 인수인계](docs/HANDOFF.md): 당시 작업의 역사적 스냅샷 (최신 운영 체크리스트 아님)
+- [이전 감사 중간 기록](AUDIT_PROGRESS.md): 최종 검사 결과가 아닌 이력
+- [웹 앱 안내](web/README.md): 웹 workspace 명령어 및 폴더 구조
+- [Python 노트 에이전트 프로토타입](https://github.com/Transient-Onlooker/tg-note-agent): 현재 TypeScript 기반 NoteRelay와 구분되는 이전 실험 구현
 
 ## 현재 기능
 
