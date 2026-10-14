@@ -4,6 +4,7 @@
 >
 > 이 문서는 NoteRelay의 실제 구현 상태, `main` 중심 개발 이력, 검증 및 릴리스 흐름을 기록한다.
 > 문서보다 현재 코드와 Git 상태가 우선한다.
+> **상태 표 주의:** 아래 과거 커밋/버전별 상태는 개발 기록이며, 현재 기능 판단은 [루트 README](../README.md)와 실제 View 소스를 참고한다.
 
 ---
 
@@ -22,7 +23,7 @@ timeline
        : Notes and Today
        : Archive
        : Purchase and Print Queue
-       : Projects and Search remain planned
+       : Search remains planned; Projects view is implemented
     V2 : Structured knowledge
        : Tasks and richer due-date workflows
        : Tags, attachments, and revisions
@@ -56,7 +57,8 @@ stateDiagram-v2
 | 구현 완료 | Print Queue | `ac892d7 Implement Print Queue sidebar workflow` |
 | 구현 완료 | Today | `9d814f2 Implement Today sidebar workflow` |
 | 진행 중 | 없음 | 현재 working tree 기준 |
-| 예정 | Projects, Search | 아직 실제 View 구현 없음 |
+| 구현 완료 | Projects | `web/src/views/ProjectsView.tsx` 및 프로젝트 API·연결 기능 |
+| 예정 | Search | 독립 검색 View는 아직 확인되지 않음 |
 
 현재 V1의 공통 기반:
 
