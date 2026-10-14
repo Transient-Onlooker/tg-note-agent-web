@@ -1,5 +1,8 @@
 # NoteRelay V0 Handoff
 
+> [!IMPORTANT]
+> **역사적 V0 인수인계 스냅샷입니다.** 이 문서의 미배포·미설정 목록은 작성 당시 상태이고, 현재 production 상태를 나타내지 않습니다. 최신 기능과 배포 절차는 [루트 README](../README.md), [개발 흐름](DEVELOPMENT_FLOW.md)을 우선 확인하세요.
+>
 ## 현재 완료된 기능
 
 - Vite + React + TypeScript Web
