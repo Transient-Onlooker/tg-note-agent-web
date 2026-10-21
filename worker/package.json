@@ -10,7 +10,7 @@
     "typecheck": "npm run generate-types && tsc --noEmit"
   },
   "dependencies": {
-    "hono": "^4.13.5"
+    "hono": "^4.13.11"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
