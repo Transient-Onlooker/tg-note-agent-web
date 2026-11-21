@@ -238,9 +238,7 @@ GitHub Pages base path:
 
 Production API URL은 Pages build workflow에서 다음 값으로 주입됩니다.
 
-```text
-https://tg-note-agent-web-api.junuh145858.workers.dev
-```
+API의 실제 배포 주소는 해당 환경의 Pages 빌드 설정에서 관리하며, 공개 README에는 고정하지 않습니다.
 
 Worker deploy에는 repository secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`가 필요합니다. Worker runtime secret은 Cloudflare에 별도로 등록합니다.
 
